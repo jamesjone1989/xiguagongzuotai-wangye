@@ -337,7 +337,7 @@ h2 {
 
 .today-capture {
   display: grid;
-  grid-template-columns: 1fr 132px;
+  grid-template-columns: minmax(0, 1fr) 210px;
   align-items: end;
   gap: 24px;
   border: 3px solid var(--ink);
@@ -382,9 +382,16 @@ h2 {
 }
 
 .today-capture > .character {
-  width: 132px;
-  height: 146px;
+  width: 210px;
+  height: 210px;
   border-radius: 0;
+  overflow: visible;
+}
+
+.today-capture > .character img {
+  transform: none;
+  object-fit: contain;
+  object-position: 50% 100%;
 }
 
 .compact-inbox-list {
@@ -856,8 +863,8 @@ h2 {
 .month-note {
   display: grid;
   gap: 6px;
-  border-top: 1px dashed var(--line);
-  padding: 10px 12px 12px;
+  border-bottom: 1px dashed var(--line);
+  padding: 11px 12px 12px;
 }
 
 .month-note > span {
@@ -867,15 +874,16 @@ h2 {
 }
 
 .month-note textarea {
-  min-height: 58px;
+  min-height: 76px;
   resize: vertical;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: 8px;
   background: rgb(255 255 255 / 58%);
-  padding: 8px 9px;
+  padding: 9px 10px;
   color: var(--ink);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .month-note textarea:focus {
@@ -889,7 +897,7 @@ h2 {
 }
 
 .mini-week {
-  padding: 8px 9px 4px;
+  padding: 6px 9px 2px;
 }
 
 .mini-week span {
@@ -901,20 +909,20 @@ h2 {
 
 .mini-month-grid {
   gap: 2px;
-  padding: 3px 9px 12px;
+  padding: 2px 9px 8px;
 }
 
 .mini-month-grid button {
   position: relative;
   display: grid;
-  aspect-ratio: 1;
+  height: 25px;
   min-width: 0;
   place-items: center;
   border: 0;
   border-radius: 50%;
   background: transparent;
   cursor: pointer;
-  font: 700 10px/1 ui-monospace, monospace;
+  font: 700 9px/1 ui-monospace, monospace;
 }
 
 .mini-month-grid button:not(:disabled):hover {
@@ -1052,6 +1060,55 @@ h2 {
   font-size: 9px;
 }
 
+.month-page {
+  padding-top: 24px;
+}
+
+.month-page .page-header {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+}
+
+.month-page .page-header h1 {
+  font-size: clamp(38px, 4vw, 52px);
+}
+
+.month-page .month-toolbar {
+  margin-bottom: 10px;
+}
+
+.month-page .week-row span {
+  padding: 8px 6px;
+}
+
+.month-page .day-cell {
+  min-height: clamp(68px, 8.2vh, 92px);
+  padding: 6px;
+}
+
+.month-page .day-number {
+  width: 23px;
+  height: 23px;
+  font-size: 11px;
+  line-height: 23px;
+}
+
+.month-page .day-cell.is-today .day-number {
+  width: 23px;
+  height: 23px;
+}
+
+.month-page .day-tasks {
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.month-page .mini-task {
+  border-left-width: 3px;
+  padding: 2px 4px;
+  font-size: 9px;
+}
+
 .date-stepper button,
 .date-stepper input {
   min-height: 42px;
@@ -1082,6 +1139,10 @@ h2 {
   width: 2px;
   background: var(--ink);
   content: "";
+}
+
+.timeline--empty::before {
+  display: none;
 }
 
 .timeline-item {
@@ -1645,37 +1706,22 @@ h2 {
   font-size: clamp(34px, 5vw, 58px);
 }
 
-.diary-chat-mentor {
-  display: flex;
-  min-height: 88px;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 2px solid var(--ink);
-  background: var(--sage);
-  padding: 10px 18px;
-}
-
-.diary-chat-mentor .character {
-  width: 62px;
-  height: 66px;
-}
-
-.diary-chat-mentor strong {
-  display: block;
-  font-family: var(--font-oppo);
-  font-size: 15px;
-}
-
-.diary-chat-mentor p {
-  margin: 3px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
 .diary-message-list {
-  min-height: 330px;
-  max-height: 460px;
+  min-height: 230px;
+  max-height: 380px;
+  align-content: start;
+  padding: 18px;
+}
+
+.diary-message-list .message--assistant {
+  width: max-content;
+  max-width: min(72%, 560px);
+}
+
+.diary-message-list .message--assistant p {
+  padding: 10px 13px;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .diary-chat-tools {
@@ -2151,7 +2197,7 @@ h2 {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     border-top: 2px solid var(--ink);
     background: var(--paper-light);
     padding-bottom: env(safe-area-inset-bottom);
@@ -2372,18 +2418,8 @@ h2 {
     gap: 9px;
   }
 
-  .diary-chat-mentor {
-    align-items: flex-start;
-    padding: 14px 16px;
-  }
-
-  .diary-chat-mentor .character {
-    width: 56px;
-    height: 60px;
-  }
-
   .diary-message-list {
-    min-height: 280px;
+    min-height: 210px;
   }
 
   .diary-chat-tools {

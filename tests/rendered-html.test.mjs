@@ -31,13 +31,13 @@ test("server-renders the personal workbench", async () => {
   const html = await response.text();
   assert.match(html, /<title>西瓜老师·个人工作台<\/title>/);
   assert.match(html, /今天要做什么？/);
-  assert.match(html, /AI 提取任务/);
+  assert.match(html, /帮我安排/);
   assert.match(html, /收信箱/);
   assert.match(html, /月历/);
   assert.match(html, /年历/);
   assert.match(html, /日程/);
   assert.match(html, /日记/);
-  assert.match(html, /AI 助手/);
+  assert.doesNotMatch(html, /AI 助手/);
   assert.match(html, /\/assets\/xigua-teacher-user-cutout\.png/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
