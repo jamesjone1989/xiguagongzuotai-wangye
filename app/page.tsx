@@ -313,9 +313,9 @@ export default function Home() {
     () => positionOverlappingTasks(todayScheduledTasks),
     [todayScheduledTasks],
   );
-  const todayInboxTasks = useMemo(
-    () => selectedTasks.filter((task) => !task.start),
-    [selectedTasks],
+  const inboxTasks = useMemo(
+    () => data.tasks.filter((task) => !task.start).sort(compareTasks),
+    [data.tasks],
   );
   const completedToday = selectedTasks.filter((task) => task.done).length;
   const filteredDiaries = data.diaries
@@ -384,7 +384,6 @@ export default function Home() {
 
     updateTask({
       ...task,
-      date: selectedDate,
       start: "",
       end: "",
     });
@@ -995,7 +994,7 @@ export default function Home() {
           <header>
             <div>
               <p className="eyebrow">没有具体时间</p>
-              <h2>收件箱 · {todayInboxTasks.length}</h2>
+              <h2>收件箱 · {inboxTasks.length}</h2>
             </div>
             <button className="text-link" onClick={() => openNewTask(selectedDate)}>
               添加＋
@@ -1005,7 +1004,7 @@ export default function Home() {
             从左侧拖回这里可取消时间；收件箱任务可拖到左侧安排。
           </p>
           <div className="today-inbox-list">
-            {todayInboxTasks.map((task) => (
+            {inboxTasks.map((task) => (
               <article
                 className={task.done ? "is-done" : ""}
                 draggable
@@ -1032,7 +1031,7 @@ export default function Home() {
                 </button>
               </article>
             ))}
-            {!todayInboxTasks.length && (
+            {!inboxTasks.length && (
               <div className="inbox-empty">
                 <span>✓</span>
                 <p>没有待安排的任务。</p>

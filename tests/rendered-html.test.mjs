@@ -84,7 +84,8 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /extractTodayTasks/);
   assert.match(page, /选择的日期是 \$\{selectedDate\}/);
   assert.match(page, /date: selectedDate/);
-  assert.match(page, /todayInboxTasks/);
+  assert.match(page, /data\.tasks\.filter\(\(task\) => !task\.start\)/);
+  assert.doesNotMatch(page, /selectedTasks\.filter\(\(task\) => !task\.start\)/);
   assert.match(page, /scheduledSelectedTasks/);
   assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
   assert.match(page, /AI 帮我填写/);
