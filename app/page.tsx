@@ -1,6 +1,14 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  DragEvent,
+  FormEvent,
+  PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type View =
   | "today"
@@ -43,6 +51,14 @@ type MonthNote = {
   updatedAt: number;
 };
 
+type PositionedTask = {
+  task: Task;
+  column: number;
+  columns: number;
+  startMinutes: number;
+  endMinutes: number;
+};
+
 type AppData = {
   tasks: Task[];
   monthlyNotes: MonthNote[];
@@ -54,6 +70,10 @@ type AppData = {
 
 const STORAGE_KEY = "xigua-personal-desk-v1";
 const LEGACY_SEED_TASK_IDS = new Set(["seed-1", "seed-2", "seed-3"]);
+const DAY_START_MINUTES = 6 * 60;
+const DAY_END_MINUTES = 24 * 60;
+const HOUR_HEIGHT = 64;
+const MIN_TASK_MINUTES = 15;
 
 const pad = (value: number) => String(value).padStart(2, "0");
 const toDateKey = (date: Date) =>
@@ -131,6 +151,73 @@ function compareTasks(a: Task, b: Task) {
     priority(a) - priority(b) ||
     (a.start || "99:99").localeCompare(b.start || "99:99")
   );
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(value: number) {
+  const clamped = Math.max(0, Math.min(DAY_END_MINUTES - 1, value));
+  return `${pad(Math.floor(clamped / 60))}:${pad(clamped % 60)}`;
+}
+
+function roundToQuarterHour(value: number) {
+  return Math.round(value / 15) * 15;
+}
+
+function positionOverlappingTasks(tasks: Task[]): PositionedTask[] {
+  const normalized = tasks
+    .filter((task) => task.start)
+    .map((task) => {
+      const startMinutes = timeToMinutes(task.start);
+      const requestedEnd = task.end ? timeToMinutes(task.end) : startMinutes + 60;
+      return {
+        task,
+        startMinutes,
+        endMinutes: Math.max(startMinutes + MIN_TASK_MINUTES, requestedEnd),
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.startMinutes - b.startMinutes ||
+        a.endMinutes - b.endMinutes ||
+        a.task.title.localeCompare(b.task.title),
+    );
+
+  const positioned: PositionedTask[] = [];
+  let group: typeof normalized = [];
+  let groupEnd = -1;
+
+  const flushGroup = () => {
+    if (!group.length) return;
+    const columnEnds: number[] = [];
+    const assigned = group.map((item) => {
+      let column = columnEnds.findIndex((end) => end <= item.startMinutes);
+      if (column === -1) {
+        column = columnEnds.length;
+        columnEnds.push(item.endMinutes);
+      } else {
+        columnEnds[column] = item.endMinutes;
+      }
+      return { ...item, column };
+    });
+    const columns = Math.max(1, columnEnds.length);
+    positioned.push(...assigned.map((item) => ({ ...item, columns })));
+    group = [];
+    groupEnd = -1;
+  };
+
+  normalized.forEach((item) => {
+    if (group.length && item.startMinutes >= groupEnd) flushGroup();
+    group.push(item);
+    groupEnd = Math.max(groupEnd, item.endMinutes);
+  });
+  flushGroup();
+
+  return positioned;
 }
 
 function formatLongDate(dateKey: string) {
@@ -225,14 +312,19 @@ export default function Home() {
         .sort(compareTasks),
     [data.tasks],
   );
+  const todayScheduledTasks = useMemo(
+    () => todayTasks.filter((task) => Boolean(task.start)),
+    [todayTasks],
+  );
+  const positionedTodayTasks = useMemo(
+    () => positionOverlappingTasks(todayScheduledTasks),
+    [todayScheduledTasks],
+  );
   const inboxTasks = useMemo(
     () => data.tasks.filter((task) => !task.start).sort(compareTasks),
     [data.tasks],
   );
   const completedToday = todayTasks.filter((task) => task.done).length;
-  const progress = todayTasks.length
-    ? Math.round((completedToday / todayTasks.length) * 100)
-    : 0;
   const filteredDiaries = data.diaries
     .filter((diary) =>
       `${diary.title}${diary.body}`.toLowerCase().includes(diarySearch.toLowerCase()),
@@ -246,6 +338,97 @@ export default function Home() {
         ? current.tasks.map((item) => (item.id === task.id ? task : item))
         : [...current.tasks, task],
     }));
+  }
+
+  function startTaskDrag(event: DragEvent<HTMLElement>, taskId: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/x-workbench-task", taskId);
+  }
+
+  function dropTaskIntoToday(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const taskId = event.dataTransfer.getData("text/x-workbench-task");
+    const task = data.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const rawMinutes =
+      DAY_START_MINUTES +
+      ((event.clientY - bounds.top) / HOUR_HEIGHT) * 60;
+    const currentStart = task.start ? timeToMinutes(task.start) : 0;
+    const currentEnd = task.end ? timeToMinutes(task.end) : currentStart + 60;
+    const duration = task.start
+      ? Math.max(MIN_TASK_MINUTES, currentEnd - currentStart)
+      : 60;
+    const startMinutes = Math.max(
+      DAY_START_MINUTES,
+      Math.min(
+        DAY_END_MINUTES - duration,
+        roundToQuarterHour(rawMinutes),
+      ),
+    );
+    const endMinutes = Math.min(DAY_END_MINUTES, startMinutes + duration);
+
+    updateTask({
+      ...task,
+      date: todayKey,
+      start: minutesToTime(startMinutes),
+      end: minutesToTime(endMinutes),
+    });
+    setNotice(`${task.title} 已安排到 ${minutesToTime(startMinutes)}。`);
+  }
+
+  function beginTaskResize(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    task: Task,
+    edge: "start" | "end",
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    const originY = event.clientY;
+    const originStart = timeToMinutes(task.start);
+    const originEnd = task.end ? timeToMinutes(task.end) : originStart + 60;
+
+    const onMove = (pointerEvent: PointerEvent) => {
+      const delta = roundToQuarterHour(
+        ((pointerEvent.clientY - originY) / HOUR_HEIGHT) * 60,
+      );
+      let nextStart = originStart;
+      let nextEnd = originEnd;
+
+      if (edge === "start") {
+        nextStart = Math.max(
+          DAY_START_MINUTES,
+          Math.min(originEnd - MIN_TASK_MINUTES, originStart + delta),
+        );
+      } else {
+        nextEnd = Math.min(
+          DAY_END_MINUTES,
+          Math.max(originStart + MIN_TASK_MINUTES, originEnd + delta),
+        );
+      }
+
+      setData((current) => ({
+        ...current,
+        tasks: current.tasks.map((item) =>
+          item.id === task.id
+            ? {
+                ...item,
+                start: minutesToTime(nextStart),
+                end: minutesToTime(nextEnd),
+              }
+            : item,
+        ),
+      }));
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }
 
   function toggleTask(id: string) {
@@ -356,7 +539,7 @@ export default function Home() {
             {
               role: "system",
               content: `把用户写下的内容提取为今天的待办任务。今天是 ${todayKey}。
-每项任务标题要简短。只有用户明确说出具体时间时，才填写 start 和 end；不得猜测或补造时间。没有具体时间时 start 和 end 都为空字符串，任务将进入收信箱。tag 只能是 工作、生活、重要。
+每项任务标题要简短。只有用户明确说出具体时间时，才填写 start 和 end；不得猜测或补造时间。没有具体时间时 start 和 end 都为空字符串，任务将进入收件箱。tag 只能是 工作、生活、重要。
 只输出 JSON：{"tasks":[{"title":"任务标题","date":"${todayKey}","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充"}]}。`,
             },
             { role: "user", content: value },
@@ -396,7 +579,7 @@ export default function Home() {
       const inboxCount = tasks.filter((task) => !task.start).length;
       setNotice(
         inboxCount
-          ? `已提取 ${tasks.length} 项，其中 ${inboxCount} 项进入收信箱。`
+          ? `已提取 ${tasks.length} 项，其中 ${inboxCount} 项进入收件箱。`
           : `已把 ${tasks.length} 项任务放进今天的时间线。`,
       );
     } catch {
@@ -603,7 +786,7 @@ export default function Home() {
         <div className="today-capture-copy">
           <p className="eyebrow">{formatLongDate(todayKey)}</p>
           <h1>今天要做什么？</h1>
-          <p>直接写下来：有具体时间就安排到日程，没有时间就放进收信箱。</p>
+          <p>直接写下来：有具体时间就安排到日程，没有时间就放进收件箱。</p>
           <div className="today-capture-composer">
             <textarea
               value={todayCapture}
@@ -629,87 +812,168 @@ export default function Home() {
         <Character />
       </section>
 
-      <section className="today-grid">
-        <article className="paper-card task-card">
-          <div className="section-heading">
+      <section className="today-planner-layout">
+        <article className="day-planner-card">
+          <header className="day-planner-heading">
             <div>
-              <p className="eyebrow">今日清单</p>
-              <h2>{completedToday} / {todayTasks.length} 已完成</h2>
+              <p className="eyebrow">从早到晚</p>
+              <h2>今日日程</h2>
+              <span>
+                {todayScheduledTasks.length} 项安排 · {completedToday} 项已完成
+              </span>
             </div>
-            <div className="progress-stamp">{progress}%</div>
-          </div>
-          <div className="progress-track">
-            <span style={{ width: `${progress}%` }} />
-          </div>
-          <div className="task-list">
-            {todayTasks.length ? (
-              todayTasks.map((task) => (
-                <div className={`task-row ${task.done ? "is-done" : ""}`} key={task.id}>
-                  <button
-                    className="check"
-                    aria-label={`${task.done ? "取消完成" : "完成"}：${task.title}`}
-                    onClick={() => toggleTask(task.id)}
-                  >
-                    {task.done ? "✓" : ""}
-                  </button>
-                  <div className="task-main">
-                    <strong>{task.title}</strong>
-                    <span>
-                      {task.start
-                        ? `${task.start}${task.end ? `–${task.end}` : ""}`
-                        : "收信箱"}
-                      {task.notes ? ` · ${task.notes}` : ""}
-                    </span>
-                  </div>
-                  <div className="task-row-meta">
-                    <span className={`tag tag--${task.tag}`}>{task.tag}</span>
-                    {task.done && <span className="status-badge">已完成</span>}
-                  </div>
-                  <button
-                    className="task-edit"
-                    aria-label={`编辑：${task.title}`}
-                    onClick={() => {
-                      setEditingTask(task);
-                      setTaskModal(true);
-                    }}
-                  >
-                    编辑
-                  </button>
-                </div>
-              ))
-            ) : (
-              <EmptyState text="今天还没有任务。" action={() => openNewTask(todayKey)} />
-            )}
+            <button className="button button--plain" onClick={() => openNewTask(todayKey)}>
+              安排一件事
+            </button>
+          </header>
+          <p className="planner-hint">
+            拖动任务可以更换时间；拖动卡片上下边缘，可以调整时长。
+          </p>
+          <div className="day-planner-scroll">
+            <div
+              className="today-hour-grid"
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={dropTaskIntoToday}
+            >
+              {Array.from(
+                { length: (DAY_END_MINUTES - DAY_START_MINUTES) / 60 },
+                (_, index) => {
+                  const hour = DAY_START_MINUTES / 60 + index;
+                  return (
+                    <div className="hour-line" key={hour}>
+                      <span>{pad(hour)}:00</span>
+                    </div>
+                  );
+                },
+              )}
+              <span className="hour-grid-end-label">24:00</span>
+              <div className="today-task-layer">
+                {positionedTodayTasks.map(
+                  ({ task, column, columns, startMinutes, endMinutes }) => {
+                    const visibleStart = Math.max(startMinutes, DAY_START_MINUTES);
+                    const visibleEnd = Math.min(endMinutes, DAY_END_MINUTES);
+                    if (visibleEnd <= visibleStart) return null;
+                    const top =
+                      ((visibleStart - DAY_START_MINUTES) / 60) * HOUR_HEIGHT;
+                    const height = Math.max(
+                      26,
+                      ((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT,
+                    );
+                    return (
+                      <article
+                        className={`schedule-block tag-block--${task.tag} ${
+                          task.done ? "is-done" : ""
+                        }`}
+                        draggable
+                        key={task.id}
+                        onDragStart={(event) => startTaskDrag(event, task.id)}
+                        style={{
+                          top: `${top}px`,
+                          height: `${height}px`,
+                          left: `calc(${(column / columns) * 100}% + 3px)`,
+                          width: `calc(${100 / columns}% - 6px)`,
+                        }}
+                      >
+                        <button
+                          className="resize-handle resize-handle--top"
+                          draggable={false}
+                          aria-label={`调整 ${task.title} 的开始时间`}
+                          onPointerDown={(event) =>
+                            beginTaskResize(event, task, "start")
+                          }
+                        />
+                        <div className="schedule-block-content">
+                          <strong title={task.title}>{task.title}</strong>
+                          <span>
+                            {task.start}–{task.end || minutesToTime(startMinutes + 60)}
+                          </span>
+                        </div>
+                        <div className="schedule-block-actions">
+                          <button
+                            draggable={false}
+                            aria-label={`${task.done ? "恢复" : "完成"}：${task.title}`}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={() => toggleTask(task.id)}
+                          >
+                            {task.done ? "↺" : "✓"}
+                          </button>
+                          <button
+                            draggable={false}
+                            aria-label={`编辑：${task.title}`}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={() => {
+                              setEditingTask(task);
+                              setTaskModal(true);
+                            }}
+                          >
+                            ···
+                          </button>
+                        </div>
+                        <button
+                          className="resize-handle resize-handle--bottom"
+                          draggable={false}
+                          aria-label={`调整 ${task.title} 的结束时间`}
+                          onPointerDown={(event) =>
+                            beginTaskResize(event, task, "end")
+                          }
+                        />
+                      </article>
+                    );
+                  },
+                )}
+              </div>
+            </div>
           </div>
         </article>
 
-        <article className="paper-card today-inbox-card">
-          <div className="section-heading">
+        <aside className="today-inbox-panel">
+          <header>
             <div>
-              <p className="eyebrow">稍后安排</p>
-              <h2>收信箱 · {inboxTasks.length}</h2>
+              <p className="eyebrow">没有具体时间</p>
+              <h2>收件箱 · {inboxTasks.length}</h2>
             </div>
             <button className="text-link" onClick={() => openNewTask(todayKey)}>
-              添加任务＋
+              添加＋
             </button>
-          </div>
-          <div className="compact-inbox-list">
-            {inboxTasks.slice(0, 8).map((task) => (
-              <button
+          </header>
+          <p className="inbox-drag-hint">把任务拖到左侧的具体时间。</p>
+          <div className="today-inbox-list">
+            {inboxTasks.map((task) => (
+              <article
+                className={task.done ? "is-done" : ""}
+                draggable
                 key={task.id}
-                onClick={() => {
-                  setEditingTask({ ...task, date: task.date || todayKey });
-                  setTaskModal(true);
-                }}
+                onDragStart={(event) => startTaskDrag(event, task.id)}
               >
-                <span className={`tag tag--${task.tag}`}>{task.tag}</span>
-                <strong>{task.title}</strong>
-                <small>安排时间</small>
-              </button>
+                <span className="drag-grip" aria-hidden="true">⋮⋮</span>
+                <div>
+                  <span className={`tag tag--${task.tag}`}>{task.tag}</span>
+                  <strong>{task.title}</strong>
+                  {task.notes && <small>{task.notes}</small>}
+                </div>
+                <button
+                  draggable={false}
+                  aria-label={`编辑：${task.title}`}
+                  onClick={() => {
+                    setEditingTask({ ...task, date: task.date || todayKey });
+                    setTaskModal(true);
+                  }}
+                >
+                  编辑
+                </button>
+              </article>
             ))}
-            {!inboxTasks.length && <p className="empty-copy">没有待安排的任务。</p>}
+            {!inboxTasks.length && (
+              <div className="inbox-empty">
+                <span>✓</span>
+                <p>没有待安排的任务。</p>
+              </div>
+            )}
           </div>
-        </article>
+        </aside>
       </section>
     </main>
   );
@@ -1310,7 +1574,7 @@ export default function Home() {
           onSave={(task) => {
             updateTask(task);
             setTaskModal(false);
-            setNotice(task.start ? "任务已经放进时间线。" : "任务已经收进收信箱。");
+            setNotice(task.start ? "任务已经放进时间线。" : "任务已经收进收件箱。");
           }}
         />
       )}
@@ -1425,7 +1689,7 @@ function TaskModal({
             {
               role: "system",
               content: `把用户的一句话整理成一个待办任务。今天是 ${todayKey}。
-只能使用用户明确提供的信息，不得编造日期、时间、人物或细节。没有明确日期时使用今天 ${todayKey}；没有明确时间时 start 和 end 为空字符串，表示放入收信箱。tag 只能是 工作、生活、重要。
+只能使用用户明确提供的信息，不得编造日期、时间、人物或细节。没有明确日期时使用今天 ${todayKey}；没有明确时间时 start 和 end 为空字符串，表示放入收件箱。tag 只能是 工作、生活、重要。
 只输出 JSON：{"title":"任务标题","date":"YYYY-MM-DD 或空字符串","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充说明"}。`,
             },
             { role: "user", content: request },
@@ -1453,7 +1717,7 @@ function TaskModal({
         tag,
         notes: parsed.notes?.trim() || current.notes,
       }));
-      setAiMessage(parsed.start ? "已帮你填好时间，保存前可以再改。" : "没有具体时间，将先放入收信箱。");
+      setAiMessage(parsed.start ? "已帮你填好时间，保存前可以再改。" : "没有具体时间，将先放入收件箱。");
     } catch {
       setAiMessage("这次没有整理成功，换一种更具体的说法试试。");
     } finally {
@@ -1518,7 +1782,7 @@ function TaskModal({
               onChange={(event) => setDraft({ ...draft, date: event.target.value })}
               required
             />
-            <small>没有填写开始时间时，任务会留在收信箱。</small>
+            <small>没有填写开始时间时，任务会留在收件箱。</small>
           </label>
           <label className="field">
             <span>标签</span>
@@ -1575,7 +1839,7 @@ function TaskModal({
             取消
           </button>
           <button type="submit" className="button button--dark">
-            {draft.start ? "放进时间线" : "放入收信箱"}
+            {draft.start ? "放进时间线" : "放入收件箱"}
           </button>
         </div>
       </form>
