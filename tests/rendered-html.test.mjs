@@ -36,7 +36,7 @@ test("server-renders the personal workbench", async () => {
   assert.equal((html.match(/class="hour-line"/g) || []).length, 14);
   assert.match(html, /08(?:<!-- -->)?:00/);
   assert.match(html, /22(?:<!-- -->)?:00/);
-  assert.match(html, /拖动卡片上下边缘，可以调整时长/);
+  assert.doesNotMatch(html, /拖动卡片上下边缘，可以调整时长/);
   assert.match(html, /月历/);
   assert.match(html, /年历/);
   assert.match(html, /日程/);
@@ -90,7 +90,11 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(styles, /\.today-hour-grid \{[\s\S]*height: 504px/);
   assert.match(
     styles,
-    /\.schedule-block-actions button:first-child \{[\s\S]*width: 30px/,
+    /\.schedule-block-actions button \{[^}]*width: 22px[^}]*height: 22px/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.schedule-block-actions button:first-child \{[^}]*width:/,
   );
   assert.match(
     styles,

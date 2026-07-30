@@ -826,9 +826,6 @@ export default function Home() {
               安排一件事
             </button>
           </header>
-          <p className="planner-hint">
-            拖动任务可以更换时间；拖动卡片上下边缘，可以调整时长。
-          </p>
           <div className="day-planner-scroll">
             <div
               className="today-hour-grid"
@@ -889,9 +886,6 @@ export default function Home() {
                         />
                         <div className="schedule-block-content">
                           <strong title={task.title}>{task.title}</strong>
-                          <span>
-                            {task.start}–{task.end || minutesToTime(startMinutes + 60)}
-                          </span>
                         </div>
                         <div className="schedule-block-actions">
                           <button

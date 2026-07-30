@@ -475,16 +475,6 @@ h2 {
   font-weight: 700;
 }
 
-.planner-hint {
-  margin: 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--sage);
-  padding: 7px 18px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .day-planner-scroll {
   max-height: none;
   overflow: visible;
@@ -568,22 +558,16 @@ h2 {
 .schedule-block-content {
   display: grid;
   min-width: 0;
-  gap: 2px;
-  padding: 5px 68px 4px 9px;
+  padding: 5px 54px 4px 9px;
 }
 
 .schedule-block-content strong {
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 900;
+  font-size: 13px;
+  font-weight: 800;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.schedule-block-content span {
-  color: var(--muted);
-  font: 800 10px/1.25 ui-monospace, monospace;
 }
 
 .schedule-block-actions {
@@ -597,24 +581,22 @@ h2 {
 
 .schedule-block-actions button {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border: 0;
   border-radius: 6px;
   background: rgb(255 255 255 / 70%);
   padding: 0;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
 }
 
 .schedule-block-actions button:first-child {
-  width: 30px;
-  height: 30px;
-  border: 1.5px solid var(--green);
+  border: 1px solid var(--green);
   color: var(--green);
-  font-size: 17px;
+  font-size: 12px;
 }
 
 .resize-handle {
@@ -2714,10 +2696,6 @@ h2 {
     min-height: 36px;
     padding: 0 12px;
     font-size: 11px;
-  }
-
-  .planner-hint {
-    padding: 8px 16px;
   }
 
   .day-planner-scroll {
