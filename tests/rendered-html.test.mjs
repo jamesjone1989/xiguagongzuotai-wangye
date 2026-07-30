@@ -31,6 +31,9 @@ test("server-renders the personal workbench", async () => {
   const html = await response.text();
   assert.match(html, /<title>西瓜老师·个人工作台<\/title>/);
   assert.match(html, /今天要做什么？/);
+  assert.match(html, /aria-label="选择今天页日期"/);
+  assert.match(html, /aria-label="前一天"/);
+  assert.match(html, /aria-label="后一天"/);
   assert.match(html, /帮我安排/);
   assert.match(html, /收件箱/);
   assert.match(html, /从左侧拖回这里可取消时间/);
@@ -79,6 +82,9 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /DAY_END_MINUTES = 22 \* 60/);
   assert.match(page, /HOUR_HEIGHT = 36/);
   assert.match(page, /extractTodayTasks/);
+  assert.match(page, /选择的日期是 \$\{selectedDate\}/);
+  assert.match(page, /date: selectedDate/);
+  assert.match(page, /todayInboxTasks/);
   assert.match(page, /scheduledSelectedTasks/);
   assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
   assert.match(page, /AI 帮我填写/);

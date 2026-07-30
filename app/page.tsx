@@ -305,26 +305,19 @@ export default function Home() {
     () => selectedTasks.filter((task) => Boolean(task.start)),
     [selectedTasks],
   );
-  const todayTasks = useMemo(
-    () =>
-      data.tasks
-        .filter((task) => task.date === todayKey)
-        .sort(compareTasks),
-    [data.tasks],
-  );
   const todayScheduledTasks = useMemo(
-    () => todayTasks.filter((task) => Boolean(task.start)),
-    [todayTasks],
+    () => selectedTasks.filter((task) => Boolean(task.start)),
+    [selectedTasks],
   );
   const positionedTodayTasks = useMemo(
     () => positionOverlappingTasks(todayScheduledTasks),
     [todayScheduledTasks],
   );
-  const inboxTasks = useMemo(
-    () => data.tasks.filter((task) => !task.start).sort(compareTasks),
-    [data.tasks],
+  const todayInboxTasks = useMemo(
+    () => selectedTasks.filter((task) => !task.start),
+    [selectedTasks],
   );
-  const completedToday = todayTasks.filter((task) => task.done).length;
+  const completedToday = selectedTasks.filter((task) => task.done).length;
   const filteredDiaries = data.diaries
     .filter((diary) =>
       `${diary.title}${diary.body}`.toLowerCase().includes(diarySearch.toLowerCase()),
@@ -376,7 +369,7 @@ export default function Home() {
 
     updateTask({
       ...task,
-      date: todayKey,
+      date: selectedDate,
       start: minutesToTime(startMinutes),
       end: minutesToTime(endMinutes),
     });
@@ -391,6 +384,7 @@ export default function Home() {
 
     updateTask({
       ...task,
+      date: selectedDate,
       start: "",
       end: "",
     });
@@ -557,9 +551,9 @@ export default function Home() {
           messages: [
             {
               role: "system",
-              content: `把用户写下的内容提取为今天的待办任务。今天是 ${todayKey}。
+              content: `把用户写下的内容提取为所选日期的待办任务。选择的日期是 ${selectedDate}。
 每项任务标题要简短。只有用户明确说出具体时间时，才填写 start 和 end；不得猜测或补造时间。没有具体时间时 start 和 end 都为空字符串，任务将进入收件箱。tag 只能是 工作、生活、重要。
-只输出 JSON：{"tasks":[{"title":"任务标题","date":"${todayKey}","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充"}]}。`,
+只输出 JSON：{"tasks":[{"title":"任务标题","date":"${selectedDate}","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充"}]}。`,
             },
             { role: "user", content: value },
           ],
@@ -584,7 +578,7 @@ export default function Home() {
           return {
             id: uid(),
             title: task.title!.trim(),
-            date: todayKey,
+            date: selectedDate,
             start,
             end,
             tag,
@@ -803,8 +797,52 @@ export default function Home() {
     <main className="content today-page" id="main-content">
       <section className="today-capture">
         <div className="today-capture-copy">
-          <p className="eyebrow">{formatLongDate(todayKey)}</p>
-          <h1>今天要做什么？</h1>
+          <div className="today-date-row">
+            <p className="eyebrow">{formatLongDate(selectedDate)}</p>
+            <div className="today-date-picker">
+              <button
+                type="button"
+                aria-label="前一天"
+                onClick={() => shiftDate(-1)}
+              >
+                ←
+              </button>
+              <input
+                type="date"
+                aria-label="选择今天页日期"
+                value={selectedDate}
+                onChange={(event) => {
+                  if (!event.target.value) return;
+                  const nextDate = new Date(`${event.target.value}T12:00:00`);
+                  setSelectedDate(event.target.value);
+                  setMonthCursor(
+                    new Date(nextDate.getFullYear(), nextDate.getMonth(), 1),
+                  );
+                }}
+              />
+              <button
+                type="button"
+                aria-label="后一天"
+                onClick={() => shiftDate(1)}
+              >
+                →
+              </button>
+              <button
+                type="button"
+                className="today-date-reset"
+                onClick={() => {
+                  setSelectedDate(todayKey);
+                  const now = new Date();
+                  setMonthCursor(
+                    new Date(now.getFullYear(), now.getMonth(), 1),
+                  );
+                }}
+              >
+                今天
+              </button>
+            </div>
+          </div>
+          <h1>{selectedDate === todayKey ? "今天要做什么？" : "这一天要做什么？"}</h1>
           <p>直接写下来：有具体时间就安排到日程，没有时间就放进收件箱。</p>
           <div className="today-capture-composer">
             <textarea
@@ -836,12 +874,12 @@ export default function Home() {
           <header className="day-planner-heading">
             <div>
               <p className="eyebrow">从早到晚</p>
-              <h2>今日日程</h2>
+              <h2>{selectedDate === todayKey ? "今日日程" : "当日日程"}</h2>
               <span>
                 {todayScheduledTasks.length} 项安排 · {completedToday} 项已完成
               </span>
             </div>
-            <button className="button button--plain" onClick={() => openNewTask(todayKey)}>
+            <button className="button button--plain" onClick={() => openNewTask(selectedDate)}>
               安排一件事
             </button>
           </header>
@@ -957,9 +995,9 @@ export default function Home() {
           <header>
             <div>
               <p className="eyebrow">没有具体时间</p>
-              <h2>收件箱 · {inboxTasks.length}</h2>
+              <h2>收件箱 · {todayInboxTasks.length}</h2>
             </div>
-            <button className="text-link" onClick={() => openNewTask(todayKey)}>
+            <button className="text-link" onClick={() => openNewTask(selectedDate)}>
               添加＋
             </button>
           </header>
@@ -967,7 +1005,7 @@ export default function Home() {
             从左侧拖回这里可取消时间；收件箱任务可拖到左侧安排。
           </p>
           <div className="today-inbox-list">
-            {inboxTasks.map((task) => (
+            {todayInboxTasks.map((task) => (
               <article
                 className={task.done ? "is-done" : ""}
                 draggable
@@ -994,7 +1032,7 @@ export default function Home() {
                 </button>
               </article>
             ))}
-            {!inboxTasks.length && (
+            {!todayInboxTasks.length && (
               <div className="inbox-empty">
                 <span>✓</span>
                 <p>没有待安排的任务。</p>
