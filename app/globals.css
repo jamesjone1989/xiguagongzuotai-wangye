@@ -337,53 +337,60 @@ h2 {
 
 .today-capture {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px;
+  grid-template-columns: minmax(0, 1fr) 132px;
   align-items: end;
-  gap: 24px;
+  gap: 16px;
   border: 3px solid var(--ink);
-  border-radius: 26px;
+  border-radius: 20px;
   background: var(--sage);
-  padding: clamp(24px, 4vw, 42px);
-  box-shadow: 8px 8px 0 var(--ink);
+  padding: 18px 22px;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.today-page {
+  padding-top: 24px;
+  padding-bottom: 36px;
 }
 
 .today-capture-copy h1 {
-  margin: 5px 0 8px;
-  font-size: clamp(36px, 5vw, 66px);
+  margin: 2px 0 4px;
+  font-size: clamp(34px, 3.5vw, 46px);
 }
 
 .today-capture-copy > p:not(.eyebrow) {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .today-capture-composer {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 12px;
-  margin-top: 22px;
+  gap: 10px;
+  margin-top: 11px;
 }
 
 .today-capture-composer textarea {
-  min-height: 92px;
+  min-height: 56px;
+  max-height: 84px;
   resize: vertical;
   border: 2px solid var(--ink);
-  border-radius: 13px;
+  border-radius: 11px;
   background: white;
-  padding: 15px 17px;
-  font-size: 15px;
-  line-height: 1.65;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .today-capture-composer .button {
   align-self: stretch;
-  min-width: 132px;
+  min-width: 112px;
+  min-height: 42px;
 }
 
 .today-capture > .character {
-  width: 210px;
-  height: 210px;
+  width: 132px;
+  height: 138px;
   border-radius: 0;
   overflow: visible;
 }
@@ -432,7 +439,7 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 320px;
   align-items: start;
   gap: 24px;
-  margin-top: 32px;
+  margin-top: 18px;
 }
 
 .day-planner-card,
@@ -449,7 +456,7 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 20px 22px 16px;
+  padding: 13px 18px 11px;
 }
 
 .day-planner-heading h2,
@@ -468,21 +475,21 @@ h2 {
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   background: var(--sage);
-  padding: 9px 22px;
+  padding: 7px 18px;
   color: var(--muted);
   font-size: 11px;
 }
 
 .day-planner-scroll {
-  max-height: min(680px, calc(100dvh - 130px));
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   overscroll-behavior: contain;
   scrollbar-color: var(--leaf) transparent;
 }
 
 .today-hour-grid {
   position: relative;
-  height: 896px;
+  height: 504px;
   background:
     linear-gradient(90deg, rgb(220 234 223 / 40%), transparent 105px),
     var(--paper-light);
@@ -490,7 +497,7 @@ h2 {
 
 .hour-line {
   position: relative;
-  height: 64px;
+  height: 36px;
   margin-left: 70px;
   border-top: 1px solid var(--line);
 }
@@ -557,7 +564,7 @@ h2 {
   display: grid;
   min-width: 0;
   gap: 2px;
-  padding: 9px 48px 7px 10px;
+  padding: 5px 68px 4px 9px;
 }
 
 .schedule-block-content strong {
@@ -577,24 +584,32 @@ h2 {
 .schedule-block-actions {
   position: absolute;
   z-index: 4;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   display: flex;
   gap: 3px;
 }
 
 .schedule-block-actions button {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   border: 0;
   border-radius: 6px;
   background: rgb(255 255 255 / 70%);
   padding: 0;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
+}
+
+.schedule-block-actions button:first-child {
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid var(--green);
+  color: var(--green);
+  font-size: 17px;
 }
 
 .resize-handle {
@@ -2638,7 +2653,7 @@ h2 {
 
   .today-capture {
     grid-template-columns: 1fr;
-    padding: 24px 20px;
+    padding: 18px;
     box-shadow: 6px 6px 0 var(--ink);
   }
 
@@ -2701,7 +2716,7 @@ h2 {
   }
 
   .day-planner-scroll {
-    max-height: 620px;
+    max-height: none;
     overflow: auto;
   }
 

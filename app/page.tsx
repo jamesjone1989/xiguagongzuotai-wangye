@@ -72,7 +72,7 @@ const STORAGE_KEY = "xigua-personal-desk-v1";
 const LEGACY_SEED_TASK_IDS = new Set(["seed-1", "seed-2", "seed-3"]);
 const DAY_START_MINUTES = 8 * 60;
 const DAY_END_MINUTES = 22 * 60;
-const HOUR_HEIGHT = 64;
+const HOUR_HEIGHT = 36;
 const MIN_TASK_MINUTES = 15;
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -781,7 +781,7 @@ export default function Home() {
   }
 
   const renderToday = () => (
-    <main className="content" id="main-content">
+    <main className="content today-page" id="main-content">
       <section className="today-capture">
         <div className="today-capture-copy">
           <p className="eyebrow">{formatLongDate(todayKey)}</p>

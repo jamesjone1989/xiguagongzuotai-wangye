@@ -71,6 +71,7 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /today-hour-grid/);
   assert.match(page, /DAY_START_MINUTES = 8 \* 60/);
   assert.match(page, /DAY_END_MINUTES = 22 \* 60/);
+  assert.match(page, /HOUR_HEIGHT = 36/);
   assert.match(page, /extractTodayTasks/);
   assert.match(page, /scheduledSelectedTasks/);
   assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
@@ -85,6 +86,11 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(
     styles,
     /\.task-modal \.field-grid \{[\s\S]*grid-template-columns: 1\.25fr 0\.8fr 1fr 1fr/,
+  );
+  assert.match(styles, /\.today-hour-grid \{[\s\S]*height: 504px/);
+  assert.match(
+    styles,
+    /\.schedule-block-actions button:first-child \{[\s\S]*width: 30px/,
   );
   assert.match(packageJson, /"name": "xigua-personal-workbench"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
