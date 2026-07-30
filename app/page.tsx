@@ -1782,7 +1782,7 @@ function TaskModal({
               onChange={(event) => setDraft({ ...draft, date: event.target.value })}
               required
             />
-            <small>没有填写开始时间时，任务会留在收件箱。</small>
+            <small>不填时间＝放入收件箱</small>
           </label>
           <label className="field">
             <span>标签</span>

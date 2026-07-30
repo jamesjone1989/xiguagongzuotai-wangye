@@ -45,9 +45,10 @@ test("server-renders the personal workbench", async () => {
 });
 
 test("keeps local data and AI privacy guardrails in source", async () => {
-  const [page, layout, packageJson] = await Promise.all([
+  const [page, layout, styles, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
 
@@ -71,10 +72,16 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
   assert.match(page, /AI 帮我填写/);
   assert.match(page, /已完成/);
+  assert.match(page, /不填时间＝放入收件箱/);
   assert.match(page, /api\.deepseek\.com\/chat\/completions/);
   assert.match(page, /不得编造人物、地点、情节、时间、因果或心理活动/);
   assert.match(page, /apiKey:\s*""/);
   assert.match(layout, /og\.png/);
+  assert.match(styles, /\.task-modal \{[\s\S]*max-height: calc\(100dvh - 32px\)/);
+  assert.match(
+    styles,
+    /\.task-modal \.field-grid \{[\s\S]*grid-template-columns: 1\.25fr 0\.8fr 1fr 1fr/,
+  );
   assert.match(packageJson, /"name": "xigua-personal-workbench"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await access(new URL("../public/og.png", import.meta.url));
