@@ -70,8 +70,8 @@ type AppData = {
 
 const STORAGE_KEY = "xigua-personal-desk-v1";
 const LEGACY_SEED_TASK_IDS = new Set(["seed-1", "seed-2", "seed-3"]);
-const DAY_START_MINUTES = 6 * 60;
-const DAY_END_MINUTES = 24 * 60;
+const DAY_START_MINUTES = 8 * 60;
+const DAY_END_MINUTES = 22 * 60;
 const HOUR_HEIGHT = 64;
 const MIN_TASK_MINUTES = 15;
 
@@ -849,7 +849,9 @@ export default function Home() {
                   );
                 },
               )}
-              <span className="hour-grid-end-label">24:00</span>
+              <span className="hour-grid-end-label">
+                {pad(DAY_END_MINUTES / 60)}:00
+              </span>
               <div className="today-task-layer">
                 {positionedTodayTasks.map(
                   ({ task, column, columns, startMinutes, endMinutes }) => {

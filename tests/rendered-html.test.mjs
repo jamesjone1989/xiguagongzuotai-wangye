@@ -33,7 +33,9 @@ test("server-renders the personal workbench", async () => {
   assert.match(html, /今天要做什么？/);
   assert.match(html, /帮我安排/);
   assert.match(html, /收件箱/);
-  assert.equal((html.match(/class="hour-line"/g) || []).length, 18);
+  assert.equal((html.match(/class="hour-line"/g) || []).length, 14);
+  assert.match(html, /08(?:<!-- -->)?:00/);
+  assert.match(html, /22(?:<!-- -->)?:00/);
   assert.match(html, /拖动卡片上下边缘，可以调整时长/);
   assert.match(html, /月历/);
   assert.match(html, /年历/);
@@ -67,6 +69,8 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /text\/x-workbench-task/);
   assert.match(page, /beginTaskResize/);
   assert.match(page, /today-hour-grid/);
+  assert.match(page, /DAY_START_MINUTES = 8 \* 60/);
+  assert.match(page, /DAY_END_MINUTES = 22 \* 60/);
   assert.match(page, /extractTodayTasks/);
   assert.match(page, /scheduledSelectedTasks/);
   assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
