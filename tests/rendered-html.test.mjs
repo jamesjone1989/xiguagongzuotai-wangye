@@ -30,13 +30,15 @@ test("server-renders the personal workbench", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>西瓜老师·个人工作台<\/title>/);
-  assert.match(html, /今天，先把重要的事放在眼前。/);
+  assert.match(html, /今天要做什么？/);
+  assert.match(html, /AI 提取任务/);
+  assert.match(html, /收信箱/);
   assert.match(html, /月历/);
   assert.match(html, /年历/);
   assert.match(html, /日程/);
   assert.match(html, /日记/);
   assert.match(html, /AI 助手/);
-  assert.match(html, /\/assets\/xigua-teacher-cutout\.png/);
+  assert.match(html, /\/assets\/xigua-teacher-user-cutout\.png/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
@@ -52,6 +54,17 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /diaryMessages/);
   assert.match(page, /生成日记/);
   assert.match(page, /dayTasks\.slice\(0,\s*3\)/);
+  assert.match(page, /LEGACY_SEED_TASK_IDS/);
+  assert.match(page, /function compareTasks/);
+  assert.match(page, /结束时间需要晚于开始时间/);
+  assert.match(page, /aria-modal="true"/);
+  assert.match(page, /monthlyNotes/);
+  assert.match(page, /收信箱/);
+  assert.match(page, /extractTodayTasks/);
+  assert.match(page, /scheduledSelectedTasks/);
+  assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
+  assert.match(page, /AI 帮我填写/);
+  assert.match(page, /已完成/);
   assert.match(page, /api\.deepseek\.com\/chat\/completions/);
   assert.match(page, /不得编造人物、地点、情节、时间、因果或心理活动/);
   assert.match(page, /apiKey:\s*""/);
@@ -60,6 +73,7 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await access(new URL("../public/og.png", import.meta.url));
   await access(
-    new URL("../public/assets/xigua-teacher-cutout.png", import.meta.url),
+    new URL("../public/assets/xigua-teacher-user-cutout.png", import.meta.url),
   );
+  await access(new URL("../public/fonts/OPPOSans-Regular.ttf", import.meta.url));
 });

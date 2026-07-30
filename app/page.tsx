@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 type View =
   | "today"
+  | "inbox"
   | "year"
   | "month"
   | "agenda"
@@ -38,8 +39,15 @@ type ChatMessage = {
   content: string;
 };
 
+type MonthNote = {
+  month: string;
+  content: string;
+  updatedAt: number;
+};
+
 type AppData = {
   tasks: Task[];
+  monthlyNotes: MonthNote[];
   diaries: Diary[];
   messages: ChatMessage[];
   diaryMessages: ChatMessage[];
@@ -47,6 +55,7 @@ type AppData = {
 };
 
 const STORAGE_KEY = "xigua-personal-desk-v1";
+const LEGACY_SEED_TASK_IDS = new Set(["seed-1", "seed-2", "seed-3"]);
 
 const pad = (value: number) => String(value).padStart(2, "0");
 const toDateKey = (date: Date) =>
@@ -57,39 +66,14 @@ const uid = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
 
+function withoutLegacySeedTasks(tasks: Task[]) {
+  return tasks.filter((task) => !LEGACY_SEED_TASK_IDS.has(task.id));
+}
+
 const seedData: AppData = {
-  tasks: [
-    {
-      id: "seed-1",
-      title: "整理本周最重要的三个交付",
-      date: todayKey,
-      start: "09:30",
-      end: "10:30",
-      tag: "重要",
-      notes: "先列结果，再拆动作。",
-      done: false,
-    },
-    {
-      id: "seed-2",
-      title: "回复需要推进的消息",
-      date: todayKey,
-      start: "11:00",
-      end: "11:30",
-      tag: "工作",
-      notes: "",
-      done: true,
-    },
-    {
-      id: "seed-3",
-      title: "散步二十分钟",
-      date: todayKey,
-      start: "18:30",
-      end: "18:50",
-      tag: "生活",
-      notes: "不带耳机。",
-      done: false,
-    },
-  ],
+  // 首次打开不放入伪造的个人记录；每一项都应当由用户自己创建。
+  tasks: [],
+  monthlyNotes: [],
   diaries: [],
   messages: [
     {
@@ -102,7 +86,7 @@ const seedData: AppData = {
     {
       id: "diary-welcome",
       role: "assistant",
-      content: "今天，想从哪里说起？可以从一个刚刚发生的瞬间开始。",
+      content: "今天发生了什么？说一件具体的事就可以。",
     },
   ],
   apiKey: "",
@@ -115,7 +99,12 @@ function safeLoad(): AppData {
     if (!raw) return seedData;
     const parsed = JSON.parse(raw) as Partial<AppData>;
     return {
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : seedData.tasks,
+      tasks: Array.isArray(parsed.tasks)
+        ? withoutLegacySeedTasks(parsed.tasks as Task[])
+        : seedData.tasks,
+      monthlyNotes: Array.isArray(parsed.monthlyNotes)
+        ? parsed.monthlyNotes as MonthNote[]
+        : [],
       diaries: Array.isArray(parsed.diaries) ? parsed.diaries : [],
       messages: Array.isArray(parsed.messages) ? parsed.messages : seedData.messages,
       diaryMessages: Array.isArray(parsed.diaryMessages)
@@ -130,6 +119,7 @@ function safeLoad(): AppData {
 
 const navItems: { id: View; label: string; hint: string }[] = [
   { id: "today", label: "今天", hint: "此刻" },
+  { id: "inbox", label: "收信箱", hint: "稍后" },
   { id: "year", label: "年历", hint: "全年" },
   { id: "month", label: "月历", hint: "全月" },
   { id: "agenda", label: "日程", hint: "一天" },
@@ -137,6 +127,15 @@ const navItems: { id: View; label: string; hint: string }[] = [
   { id: "ai", label: "AI 助手", hint: "整理" },
   { id: "settings", label: "设置", hint: "本地" },
 ];
+
+function compareTasks(a: Task, b: Task) {
+  const priority = (task: Task) => (task.tag === "重要" ? 0 : 1);
+  return (
+    Number(a.done) - Number(b.done) ||
+    priority(a) - priority(b) ||
+    (a.start || "99:99").localeCompare(b.start || "99:99")
+  );
+}
 
 function formatLongDate(dateKey: string) {
   const date = new Date(`${dateKey}T12:00:00`);
@@ -163,8 +162,10 @@ function monthDays(cursor: Date) {
 function Character({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`character ${compact ? "character--compact" : ""}`}>
+      {/* 透明抠图需要保留原始像素边缘，避免运行时图片代理再次压缩。 */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/assets/xigua-teacher-cutout.png"
+        src="/assets/xigua-teacher-user-cutout.png"
         alt="戴西瓜帽、圆框眼镜的西瓜老师"
       />
     </div>
@@ -187,7 +188,7 @@ export default function Home() {
     title: "",
     body: "",
     mood: "平静",
-    updatedAt: Date.now(),
+    updatedAt: 0,
   });
   const [diarySearch, setDiarySearch] = useState("");
   const [diaryInput, setDiaryInput] = useState("");
@@ -196,9 +197,13 @@ export default function Home() {
   const [isDiaryThinking, setIsDiaryThinking] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
+  const [todayCapture, setTodayCapture] = useState("");
+  const [isTaskExtracting, setIsTaskExtracting] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
+    // localStorage 仅在浏览器端可用，因此在首屏挂载后恢复个人数据。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setData(safeLoad());
     setHydrated(true);
   }, []);
@@ -212,14 +217,22 @@ export default function Home() {
     () =>
       data.tasks
         .filter((task) => task.date === selectedDate)
-        .sort((a, b) => (a.start || "99:99").localeCompare(b.start || "99:99")),
+        .sort(compareTasks),
     [data.tasks, selectedDate],
+  );
+  const scheduledSelectedTasks = useMemo(
+    () => selectedTasks.filter((task) => Boolean(task.start)),
+    [selectedTasks],
   );
   const todayTasks = useMemo(
     () =>
       data.tasks
         .filter((task) => task.date === todayKey)
-        .sort((a, b) => (a.start || "99:99").localeCompare(b.start || "99:99")),
+        .sort(compareTasks),
+    [data.tasks],
+  );
+  const inboxTasks = useMemo(
+    () => data.tasks.filter((task) => !task.start).sort(compareTasks),
     [data.tasks],
   );
   const completedToday = todayTasks.filter((task) => task.done).length;
@@ -272,6 +285,25 @@ export default function Home() {
     setTaskModal(true);
   }
 
+  function openInboxTask() {
+    openNewTask(todayKey);
+  }
+
+  function updateMonthNote(month: string, content: string) {
+    setData((current) => {
+      const existing = current.monthlyNotes.find((note) => note.month === month);
+      const nextNote = { month, content, updatedAt: Date.now() };
+      return {
+        ...current,
+        monthlyNotes: existing
+          ? current.monthlyNotes.map((note) =>
+              note.month === month ? nextNote : note,
+            )
+          : [...current.monthlyNotes, nextNote],
+      };
+    });
+  }
+
   function saveDiary() {
     if (!diaryDraft.title.trim() || !diaryDraft.body.trim()) {
       setNotice("先写一个标题和几句话，再保存。");
@@ -305,7 +337,7 @@ export default function Home() {
         title: "",
         body: "",
         mood: "平静",
-        updatedAt: Date.now(),
+        updatedAt: 0,
       });
     }
   }
@@ -376,6 +408,80 @@ export default function Home() {
     }
   }
 
+  async function extractTodayTasks() {
+    const value = todayCapture.trim();
+    if (!value || isTaskExtracting) return;
+    if (!data.apiKey) {
+      setView("settings");
+      setNotice("先在设置里填入 DeepSeek API Key，AI 才能提取任务。");
+      return;
+    }
+    setIsTaskExtracting(true);
+    try {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          temperature: 0.1,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: `把用户写下的内容提取为今天的待办任务。今天是 ${todayKey}。
+每项任务标题要简短。只有用户明确说出具体时间时，才填写 start 和 end；不得猜测或补造时间。没有具体时间时 start 和 end 都为空字符串，任务将进入收信箱。tag 只能是 工作、生活、重要。
+只输出 JSON：{"tasks":[{"title":"任务标题","date":"${todayKey}","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充"}]}。`,
+            },
+            { role: "user", content: value },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error("DeepSeek 请求失败");
+      const result = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const raw = result.choices?.[0]?.message?.content?.trim() || "";
+      const parsed = JSON.parse(
+        raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""),
+      ) as { tasks?: Partial<Task>[] };
+      const tasks = (Array.isArray(parsed.tasks) ? parsed.tasks : [])
+        .filter((task) => task.title?.trim())
+        .map((task) => {
+          const start = /^\d{2}:\d{2}$/.test(task.start || "") ? task.start || "" : "";
+          const end = start && /^\d{2}:\d{2}$/.test(task.end || "") ? task.end || "" : "";
+          const tag: TaskTag = ["工作", "生活", "重要"].includes(task.tag || "")
+            ? task.tag as TaskTag
+            : "工作";
+          return {
+            id: uid(),
+            title: task.title!.trim(),
+            date: todayKey,
+            start,
+            end,
+            tag,
+            notes: task.notes?.trim() || "",
+            done: false,
+          };
+        });
+      if (!tasks.length) throw new Error("没有可用任务");
+      setData((current) => ({ ...current, tasks: [...current.tasks, ...tasks] }));
+      setTodayCapture("");
+      const inboxCount = tasks.filter((task) => !task.start).length;
+      setNotice(
+        inboxCount
+          ? `已提取 ${tasks.length} 项，其中 ${inboxCount} 项进入收信箱。`
+          : `已把 ${tasks.length} 项任务放进今天的时间线。`,
+      );
+    } catch {
+      setNotice("这次没有提取成功，请换一种更直接的说法再试。");
+    } finally {
+      setIsTaskExtracting(false);
+    }
+  }
+
   async function sendDiaryMessage() {
     const value = diaryInput.trim();
     if (!value || isDiaryThinking) return;
@@ -403,7 +509,7 @@ export default function Home() {
             {
               role: "system",
               content:
-                "你是西瓜老师，也是一位克制、温和的日记陪伴者。基于用户刚刚说过的内容，每次只问一个具体、有用的问题，帮助用户回到当时的瞬间、感受、意义或下一步。回复要短，不做诊断，不连续夸奖，不重复用户大段原话。只能使用用户对话中明确出现或可直接推断的信息，不得编造人物、地点、情节、时间、因果或心理活动。",
+                "你是西瓜老师，帮助用户把今天发生的事聊清楚，之后整理成日记。每次只回复一句简短、具体的话；优先问事情发生了什么、接下来发生了什么或最后结果怎样。除非用户主动提起，否则不要追问感受、意义、成长或内心原因。不要诊断，不要夸奖，不要说教，不要重复用户大段原话。只能使用用户明确说过的信息，不得编造人物、地点、情节、时间、因果或心理活动。",
             },
             ...nextMessages.slice(-16).map(({ role, content }) => ({ role, content })),
           ],
@@ -415,7 +521,7 @@ export default function Home() {
       };
       const content =
         result.choices?.[0]?.message?.content?.trim() ||
-        "这件事里，最让你记住的是哪个瞬间？";
+        "然后发生了什么？";
       setData((current) => ({
         ...current,
         diaryMessages: [
@@ -563,7 +669,10 @@ export default function Home() {
           throw new Error("invalid");
         }
         setData((current) => ({
-          tasks: parsed.tasks || [],
+          tasks: withoutLegacySeedTasks(parsed.tasks as Task[]),
+          monthlyNotes: Array.isArray(parsed.monthlyNotes)
+            ? parsed.monthlyNotes as MonthNote[]
+            : [],
           diaries: parsed.diaries || [],
           messages: Array.isArray(parsed.messages)
             ? parsed.messages
@@ -584,33 +693,34 @@ export default function Home() {
 
   const renderToday = () => (
     <main className="content" id="main-content">
-      <section className="today-hero">
-        <div className="hero-copy">
+      <section className="today-capture">
+        <div className="today-capture-copy">
           <p className="eyebrow">{formatLongDate(todayKey)}</p>
-          <h1>今天，先把重要的事放在眼前。</h1>
-          <p className="hero-lead">
-            不用把一天塞满。完成一件真正重要的事，也算走了很远。
-          </p>
-          <div className="hero-actions">
-            <button className="button button--dark" onClick={() => openNewTask(todayKey)}>
-              添加今天的任务
-            </button>
-            <button className="button button--plain" onClick={() => setView("diary")}>
-              写几句话
+          <h1>今天要做什么？</h1>
+          <p>直接写下来。AI 会提取任务，没有具体时间的会先进入收信箱。</p>
+          <div className="today-capture-composer">
+            <textarea
+              value={todayCapture}
+              onChange={(event) => setTodayCapture(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  void extractTodayTasks();
+                }
+              }}
+              placeholder="例如：上午十点开项目会；整理培训资料；给妈妈回电话"
+              aria-label="写下今天要做的事"
+            />
+            <button
+              className="button button--dark"
+              disabled={isTaskExtracting || !todayCapture.trim()}
+              onClick={() => void extractTodayTasks()}
+            >
+              {isTaskExtracting ? "正在提取…" : "AI 提取任务"}
             </button>
           </div>
         </div>
-        <div className="mentor-panel">
-          <div className="mentor-note">
-            <span>西瓜老师的小提醒</span>
-            <strong>
-              {todayTasks.length
-                ? `今天有 ${todayTasks.length} 件事，先看最重要的那一件。`
-                : "今天还没有安排，先给自己留一个锚点。"}
-            </strong>
-          </div>
-          <Character />
-        </div>
+        <Character compact />
       </section>
 
       <section className="today-grid">
@@ -638,26 +748,114 @@ export default function Home() {
                   </button>
                   <div className="task-main">
                     <strong>{task.title}</strong>
-                    <span>{task.start || "全天"} {task.notes ? `· ${task.notes}` : ""}</span>
+                    <span>
+                      {task.start
+                        ? `${task.start}${task.end ? `–${task.end}` : ""}`
+                        : "收信箱"}
+                      {task.notes ? ` · ${task.notes}` : ""}
+                    </span>
                   </div>
-                  <span className={`tag tag--${task.tag}`}>{task.tag}</span>
+                  <div className="task-row-meta">
+                    <span className={`tag tag--${task.tag}`}>{task.tag}</span>
+                    {task.done && <span className="status-badge">已完成</span>}
+                  </div>
+                  <button
+                    className="task-edit"
+                    aria-label={`编辑：${task.title}`}
+                    onClick={() => {
+                      setEditingTask(task);
+                      setTaskModal(true);
+                    }}
+                  >
+                    编辑
+                  </button>
                 </div>
               ))
             ) : (
-              <EmptyState text="今天还是一张空白便签。" action={() => openNewTask(todayKey)} />
+              <EmptyState text="今天还没有任务。" action={() => openNewTask(todayKey)} />
             )}
           </div>
         </article>
 
-        <article className="paper-card echo-card">
-          <p className="eyebrow">今日回声</p>
-          <h2>给今天留一句话</h2>
-          <p>不需要完整，不需要深刻。先写下此刻最想记住的一个瞬间。</p>
-          <button className="text-link" onClick={() => setView("diary")}>
-            打开日记纸张 →
-          </button>
-          <div className="scribble">每一天，都值得被认真听见。</div>
+        <article className="paper-card today-inbox-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">稍后安排</p>
+              <h2>收信箱 · {inboxTasks.length}</h2>
+            </div>
+            <button className="text-link" onClick={() => setView("inbox")}>
+              查看全部 →
+            </button>
+          </div>
+          <div className="compact-inbox-list">
+            {inboxTasks.slice(0, 4).map((task) => (
+              <button
+                key={task.id}
+                onClick={() => {
+                  setEditingTask({ ...task, date: task.date || todayKey });
+                  setTaskModal(true);
+                }}
+              >
+                <span className={`tag tag--${task.tag}`}>{task.tag}</span>
+                <strong>{task.title}</strong>
+                <small>安排时间</small>
+              </button>
+            ))}
+            {!inboxTasks.length && <p className="empty-copy">没有待安排的任务。</p>}
+          </div>
         </article>
+      </section>
+    </main>
+  );
+
+  const renderInbox = () => (
+    <main className="content content--narrow" id="main-content">
+      <PageHeader
+        eyebrow="没有具体时间的任务"
+        title="收信箱"
+        actionLabel="添加任务"
+        onAction={openInboxTask}
+      />
+      <section className="inbox-intro">
+        <div>
+          <strong>{inboxTasks.length ? `这里有 ${inboxTasks.length} 件待安排的事。` : "先把事情收进来，再决定什么时候做。"}</strong>
+          <p>收信箱里的任务不占用时间线。选好具体时间后，就会自动移入日程。</p>
+        </div>
+        <Character compact />
+      </section>
+      <section className="inbox-list">
+        {inboxTasks.length ? (
+          inboxTasks.map((task) => (
+            <article className={`inbox-task ${task.done ? "is-done" : ""}`} key={task.id}>
+              <button
+                className="check"
+                aria-label={`${task.done ? "取消完成" : "完成"}：${task.title}`}
+                onClick={() => toggleTask(task.id)}
+              >
+                {task.done ? "✓" : ""}
+              </button>
+              <div>
+                <div className="inbox-task-title">
+                  <span className={`tag tag--${task.tag}`}>{task.tag}</span>
+                  {task.done && <span className="status-badge">已完成</span>}
+                </div>
+                <h2>{task.title}</h2>
+                {task.notes && <p>{task.notes}</p>}
+              </div>
+              <button
+                className="button button--plain"
+                onClick={() => {
+                  setEditingTask(task);
+                  setTaskModal(true);
+                }}
+              >
+                安排时间
+              </button>
+            </article>
+          ))
+        ) : (
+          <EmptyState text="收信箱还是空的。" action={openInboxTask} />
+        )}
       </section>
     </main>
   );
@@ -696,8 +894,10 @@ export default function Home() {
           {Array.from({ length: 12 }, (_, monthIndex) => {
             const cursor = new Date(year, monthIndex, 1);
             const days = monthDays(cursor);
+            const monthKey = `${year}-${pad(monthIndex + 1)}`;
+            const monthNote = data.monthlyNotes.find((note) => note.month === monthKey);
             const monthTaskCount = data.tasks.filter((task) =>
-              task.date.startsWith(`${year}-${pad(monthIndex + 1)}`),
+              task.date.startsWith(monthKey),
             ).length;
             return (
               <article className="year-month" key={monthIndex}>
@@ -746,6 +946,15 @@ export default function Home() {
                     );
                   })}
                 </div>
+                <label className="month-note">
+                  <span>这个月要做哪些事？</span>
+                  <textarea
+                    aria-label={`${year} 年 ${monthIndex + 1} 月的月度计划`}
+                    value={monthNote?.content || ""}
+                    onChange={(event) => updateMonthNote(monthKey, event.target.value)}
+                    placeholder="每行写一件事，不用填具体时间"
+                  />
+                </label>
               </article>
             );
           })}
@@ -857,51 +1066,82 @@ export default function Home() {
           onChange={(event) => setSelectedDate(event.target.value)}
         />
         <button onClick={() => shiftDate(1)}>后一天</button>
+        <button
+          className="date-today"
+          onClick={() => {
+            setSelectedDate(todayKey);
+            const now = new Date();
+            setMonthCursor(new Date(now.getFullYear(), now.getMonth(), 1));
+          }}
+        >
+          回到今天
+        </button>
       </div>
-      <section className="agenda-layout">
+      <section className="agenda-inbox">
+        <div className="agenda-section-heading">
+          <div>
+            <span>收信箱</span>
+            <strong>{inboxTasks.length} 项待安排</strong>
+          </div>
+          <button onClick={() => setView("inbox")}>查看全部</button>
+        </div>
+        <div className="agenda-inbox-list">
+          {inboxTasks.slice(0, 6).map((task) => (
+            <article key={task.id}>
+              <span className={`tag tag--${task.tag}`}>{task.tag}</span>
+              <strong title={task.title}>{task.title}</strong>
+              <button
+                onClick={() => {
+                  setEditingTask({ ...task, date: selectedDate });
+                  setTaskModal(true);
+                }}
+              >
+                放入时间线
+              </button>
+            </article>
+          ))}
+          {!inboxTasks.length && <p>没有待安排的任务。</p>}
+        </div>
+      </section>
+      <section className="agenda-layout agenda-layout--tasks-only">
         <div className="timeline">
-          {selectedTasks.length ? (
-            selectedTasks.map((task) => (
+          {scheduledSelectedTasks.length ? (
+            scheduledSelectedTasks.map((task) => (
               <article className={`timeline-item ${task.done ? "is-done" : ""}`} key={task.id}>
                 <div className="time-column">
-                  <strong>{task.start || "全天"}</strong>
+                  <strong>{task.start}</strong>
                   <span>{task.end || ""}</span>
                 </div>
                 <div className="time-pin" />
-                <div className="agenda-task">
+                <div className="agenda-task" title={task.notes || undefined}>
+                  <button
+                    className="check check--small"
+                    aria-label={`${task.done ? "取消完成" : "完成"}：${task.title}`}
+                    onClick={() => toggleTask(task.id)}
+                  >
+                    {task.done ? "✓" : ""}
+                  </button>
                   <span className={`tag tag--${task.tag}`}>{task.tag}</span>
                   <h3>{task.title}</h3>
-                  {task.notes && <p>{task.notes}</p>}
-                  <div className="row-actions">
-                    <button onClick={() => toggleTask(task.id)}>
-                      {task.done ? "恢复任务" : "标为完成"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingTask(task);
-                        setTaskModal(true);
-                      }}
-                    >
-                      编辑
-                    </button>
-                    <button className="danger" onClick={() => removeTask(task.id)}>
-                      删除
-                    </button>
-                  </div>
+                  <button
+                    className="agenda-edit"
+                    onClick={() => {
+                      setEditingTask(task);
+                      setTaskModal(true);
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button className="agenda-delete" onClick={() => removeTask(task.id)}>
+                    删除
+                  </button>
                 </div>
               </article>
             ))
           ) : (
-            <EmptyState text="这一天还没有安排。" action={() => openNewTask(selectedDate)} />
+            <EmptyState text="这一天的时间线还是空的。" action={() => openNewTask(selectedDate)} />
           )}
         </div>
-        <aside className="mentor-aside">
-          <Character compact />
-          <div>
-            <span>西瓜老师</span>
-            <p>如果一天只能推进一件事，你希望晚上回头看见哪一件已经完成？</p>
-          </div>
-        </aside>
       </section>
     </main>
   );
@@ -910,13 +1150,14 @@ export default function Home() {
     const date = new Date(`${selectedDate}T12:00:00`);
     date.setDate(date.getDate() + amount);
     setSelectedDate(toDateKey(date));
+    setMonthCursor(new Date(date.getFullYear(), date.getMonth(), 1));
   }
 
   const renderDiary = () => (
-    <main className="content" id="main-content">
+    <main className="content diary-page" id="main-content">
       <PageHeader
-        eyebrow="对话型日记"
-        title={diaryView === "chat" ? "今天，想从哪里说起？" : "日记草稿"}
+        eyebrow="像聊天一样记录"
+        title={diaryView === "chat" ? "对话日记" : "日记草稿"}
         actionLabel={diaryView === "chat" ? "新建对话" : "返回对话"}
         onAction={() => {
           if (diaryView === "draft") {
@@ -980,8 +1221,8 @@ export default function Home() {
             <div className="diary-chat-mentor">
               <Character compact />
               <div>
-                <strong>西瓜老师在这里听你说。</strong>
-                <p>一次只聊一个具体的瞬间。你准备好后，再主动生成日记。</p>
+                <strong>西瓜老师</strong>
+                <p>今天发生了什么？说一件具体的事就可以。</p>
               </div>
             </div>
             <div className="message-list diary-message-list" aria-live="polite">
@@ -1038,7 +1279,7 @@ export default function Home() {
                     void sendDiaryMessage();
                   }
                 }}
-                placeholder="现在，有什么想聊的吗？"
+                placeholder="写下今天发生的一件事"
                 aria-label="写下今天想说的话"
               />
               <button
@@ -1276,6 +1517,7 @@ export default function Home() {
           <button onClick={() => setView("settings")}>设置</button>
         </header>
         {view === "today" && renderToday()}
+        {view === "inbox" && renderInbox()}
         {view === "year" && renderYear()}
         {view === "month" && renderMonth()}
         {view === "agenda" && renderAgenda()}
@@ -1285,7 +1527,7 @@ export default function Home() {
       </div>
 
       <nav className="mobile-nav" aria-label="手机端导航">
-        {navItems.slice(0, 6).map((item) => (
+        {navItems.filter((item) => item.id !== "settings").map((item) => (
           <button
             className={view === item.id ? "is-active" : ""}
             key={item.id}
@@ -1299,11 +1541,17 @@ export default function Home() {
       {taskModal && editingTask && (
         <TaskModal
           task={editingTask}
+          apiKey={data.apiKey}
           onClose={() => setTaskModal(false)}
+          onNeedApiKey={() => {
+            setTaskModal(false);
+            setView("settings");
+            setNotice("先在设置里填入 DeepSeek API Key，AI 才能帮你安排。");
+          }}
           onSave={(task) => {
             updateTask(task);
             setTaskModal(false);
-            setNotice("任务已经放进日历。");
+            setNotice(task.start ? "任务已经放进时间线。" : "任务已经收进收信箱。");
           }}
         />
       )}
@@ -1355,32 +1603,119 @@ function EmptyState({ text, action }: { text: string; action: () => void }) {
 
 function TaskModal({
   task,
+  apiKey,
   onSave,
   onClose,
+  onNeedApiKey,
 }: {
   task: Task;
+  apiKey: string;
   onSave: (task: Task) => void;
   onClose: () => void;
+  onNeedApiKey: () => void;
 }) {
   const [draft, setDraft] = useState(task);
+  const [timeError, setTimeError] = useState("");
+  const [aiInput, setAiInput] = useState("");
+  const [aiMessage, setAiMessage] = useState("");
+  const [isAiArranging, setIsAiArranging] = useState(false);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!draft.title.trim()) return;
-    onSave({ ...draft, title: draft.title.trim() });
+    if (!draft.start && draft.end) {
+      setTimeError("请先填写开始时间，或同时清空开始和结束时间。");
+      return;
+    }
+    if (draft.start && draft.end && draft.end <= draft.start) {
+      setTimeError("结束时间需要晚于开始时间。");
+      return;
+    }
+    onSave({ ...draft, date: draft.date || todayKey, title: draft.title.trim() });
+  }
+
+  async function applyAiArrangement() {
+    const request = aiInput.trim();
+    if (!request || isAiArranging) return;
+    if (!apiKey) {
+      onNeedApiKey();
+      return;
+    }
+    setIsAiArranging(true);
+    setAiMessage("");
+    try {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          temperature: 0.1,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: `把用户的一句话整理成一个待办任务。今天是 ${todayKey}。
+只能使用用户明确提供的信息，不得编造日期、时间、人物或细节。没有明确日期时使用今天 ${todayKey}；没有明确时间时 start 和 end 为空字符串，表示放入收信箱。tag 只能是 工作、生活、重要。
+只输出 JSON：{"title":"任务标题","date":"YYYY-MM-DD 或空字符串","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充说明"}。`,
+            },
+            { role: "user", content: request },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error("DeepSeek 请求失败");
+      const result = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const raw = result.choices?.[0]?.message?.content?.trim() || "";
+      const parsed = JSON.parse(
+        raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""),
+      ) as Partial<Task>;
+      if (!parsed.title?.trim()) throw new Error("无效任务");
+      const tag: TaskTag = ["工作", "生活", "重要"].includes(parsed.tag || "")
+        ? parsed.tag as TaskTag
+        : "工作";
+      setDraft((current) => ({
+        ...current,
+        title: parsed.title?.trim() || current.title,
+        date: /^\d{4}-\d{2}-\d{2}$/.test(parsed.date || "") ? parsed.date || todayKey : todayKey,
+        start: /^\d{2}:\d{2}$/.test(parsed.start || "") ? parsed.start || "" : "",
+        end: /^\d{2}:\d{2}$/.test(parsed.end || "") ? parsed.end || "" : "",
+        tag,
+        notes: parsed.notes?.trim() || current.notes,
+      }));
+      setAiMessage(parsed.start ? "已帮你填好时间，保存前可以再改。" : "没有具体时间，将先放入收信箱。");
+    } catch {
+      setAiMessage("这次没有整理成功，换一种更具体的说法试试。");
+    } finally {
+      setIsAiArranging(false);
+    }
   }
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <form
         className="task-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-modal-title"
         onSubmit={submit}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="modal-heading">
           <div>
-            <p className="eyebrow">新便签</p>
-            <h2>{task.title ? "编辑任务" : "安排一件事"}</h2>
+            <p className="eyebrow">{task.title ? "调整安排" : "新便签"}</p>
+            <h2 id="task-modal-title">{task.title ? "编辑任务" : "安排一件事"}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="关闭">×</button>
         </div>
@@ -1394,15 +1729,37 @@ function TaskModal({
             required
           />
         </label>
+        <div className="ai-arranger">
+          <div>
+            <span>不会安排？交给 AI</span>
+            <small>例如：下周三下午和张老师确认方案</small>
+          </div>
+          <textarea
+            value={aiInput}
+            onChange={(event) => setAiInput(event.target.value)}
+            placeholder="用一句话说说你想做的事"
+            aria-label="让 AI 帮忙安排任务"
+          />
+          <button
+            type="button"
+            className="button button--plain"
+            disabled={isAiArranging || !aiInput.trim()}
+            onClick={() => void applyAiArrangement()}
+          >
+            {isAiArranging ? "正在整理…" : "AI 帮我填写"}
+          </button>
+          {aiMessage && <p className="ai-arranger-message" role="status">{aiMessage}</p>}
+        </div>
         <div className="field-grid">
           <label className="field">
             <span>日期</span>
             <input
               type="date"
-              value={draft.date}
+              value={draft.date || todayKey}
               onChange={(event) => setDraft({ ...draft, date: event.target.value })}
               required
             />
+            <small>没有填写开始时间时，任务会留在收信箱。</small>
           </label>
           <label className="field">
             <span>标签</span>
@@ -1422,7 +1779,14 @@ function TaskModal({
             <input
               type="time"
               value={draft.start}
-              onChange={(event) => setDraft({ ...draft, start: event.target.value })}
+              onChange={(event) => {
+                setTimeError("");
+                setDraft({
+                  ...draft,
+                  start: event.target.value,
+                  end: event.target.value ? draft.end : "",
+                });
+              }}
             />
           </label>
           <label className="field">
@@ -1430,10 +1794,15 @@ function TaskModal({
             <input
               type="time"
               value={draft.end}
-              onChange={(event) => setDraft({ ...draft, end: event.target.value })}
+              aria-describedby={timeError ? "task-time-error" : undefined}
+              onChange={(event) => {
+                setTimeError("");
+                setDraft({ ...draft, end: event.target.value });
+              }}
             />
           </label>
         </div>
+        {timeError && <p className="field-error" id="task-time-error" role="alert">{timeError}</p>}
         <label className="field">
           <span>补充说明</span>
           <textarea
@@ -1447,7 +1816,7 @@ function TaskModal({
             取消
           </button>
           <button type="submit" className="button button--dark">
-            放进日历
+            {draft.start ? "放进时间线" : "放入收信箱"}
           </button>
         </div>
       </form>
