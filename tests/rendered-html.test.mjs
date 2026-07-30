@@ -92,6 +92,10 @@ test("keeps local data and AI privacy guardrails in source", async () => {
     styles,
     /\.schedule-block-actions button:first-child \{[\s\S]*width: 30px/,
   );
+  assert.match(
+    styles,
+    /\.brand-mark i \{[\s\S]*border-bottom: 3px solid var\(--ink\)/,
+  );
   assert.match(packageJson, /"name": "xigua-personal-workbench"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await access(new URL("../public/og.png", import.meta.url));

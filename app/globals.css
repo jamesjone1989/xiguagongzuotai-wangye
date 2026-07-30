@@ -159,8 +159,7 @@ a:focus-visible {
 }
 
 .brand-mark::before,
-.brand-mark::after,
-.brand-mark i {
+.brand-mark::after {
   position: absolute;
   width: 4px;
   height: 7px;
@@ -178,7 +177,13 @@ a:focus-visible {
 }
 
 .brand-mark i {
+  position: absolute;
+  width: 17px;
+  height: 9px;
   transform: translateY(7px);
+  border-bottom: 3px solid var(--ink);
+  border-radius: 0 0 50% 50%;
+  content: "";
 }
 
 .sidebar nav {
