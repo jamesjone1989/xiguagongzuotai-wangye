@@ -59,7 +59,9 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /localStorage/);
   assert.match(page, /diaryMessages/);
   assert.match(page, /生成日记/);
-  assert.match(page, /dayTasks\.slice\(0,\s*3\)/);
+  assert.match(page, /dayTasks\.slice\(0,\s*10\)/);
+  assert.match(page, /dayTasks\.length > 10/);
+  assert.doesNotMatch(page, /"留白"/);
   assert.match(page, /LEGACY_SEED_TASK_IDS/);
   assert.match(page, /function compareTasks/);
   assert.match(page, /结束时间需要晚于开始时间/);
@@ -92,6 +94,10 @@ test("keeps local data and AI privacy guardrails in source", async () => {
     /\.task-modal \.field-grid \{[\s\S]*grid-template-columns: 1\.25fr 0\.8fr 1fr 1fr/,
   );
   assert.match(styles, /\.today-hour-grid \{[\s\S]*height: 504px/);
+  assert.match(
+    styles,
+    /\.month-page \.day-tasks \{[^}]*min-height: 65px[^}]*align-content: start/,
+  );
   assert.match(
     styles,
     /\.schedule-block-actions button \{[^}]*width: 22px[^}]*height: 22px/,

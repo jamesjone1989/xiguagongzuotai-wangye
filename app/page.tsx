@@ -1055,7 +1055,7 @@ export default function Home() {
                   }}
                 >
                   <strong>{monthIndex + 1} 月</strong>
-                  <span>{monthTaskCount ? `${monthTaskCount} 项任务` : "留白"}</span>
+                  {monthTaskCount > 0 && <span>{monthTaskCount} 项任务</span>}
                 </button>
                 <label className="month-note">
                   <span>这个月要做哪些事？</span>
@@ -1179,12 +1179,12 @@ export default function Home() {
                 >
                   <span className="day-number">{date.getDate()}</span>
                   <span className="day-tasks">
-                    {dayTasks.slice(0, 3).map((task) => (
+                    {dayTasks.slice(0, 10).map((task) => (
                       <span className={`mini-task ${task.done ? "is-done" : ""}`} key={task.id}>
                         {task.title}
                       </span>
                     ))}
-                    {dayTasks.length > 3 && <small>还有 {dayTasks.length - 3} 项</small>}
+                    {dayTasks.length > 10 && <small>还有 {dayTasks.length - 10} 项</small>}
                   </span>
                 </button>
               );
