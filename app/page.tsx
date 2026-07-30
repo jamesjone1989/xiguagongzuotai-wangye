@@ -340,6 +340,11 @@ export default function Home() {
     }));
   }
 
+  function openTaskDetails(task: Task) {
+    setEditingTask({ ...task, date: task.date || todayKey });
+    setTaskModal(true);
+  }
+
   function startTaskDrag(event: DragEvent<HTMLElement>, taskId: string) {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/x-workbench-task", taskId);
@@ -376,6 +381,20 @@ export default function Home() {
       end: minutesToTime(endMinutes),
     });
     setNotice(`${task.title} 已安排到 ${minutesToTime(startMinutes)}。`);
+  }
+
+  function dropTaskIntoInbox(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const taskId = event.dataTransfer.getData("text/x-workbench-task");
+    const task = data.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    updateTask({
+      ...task,
+      start: "",
+      end: "",
+    });
+    setNotice(`${task.title} 已移回收件箱。`);
   }
 
   function beginTaskResize(
@@ -869,6 +888,11 @@ export default function Home() {
                         draggable
                         key={task.id}
                         onDragStart={(event) => startTaskDrag(event, task.id)}
+                        onDoubleClick={(event) => {
+                          if ((event.target as HTMLElement).closest("button")) return;
+                          openTaskDetails(task);
+                        }}
+                        title="双击查看任务详情"
                         style={{
                           top: `${top}px`,
                           height: `${height}px`,
@@ -900,10 +924,7 @@ export default function Home() {
                             draggable={false}
                             aria-label={`编辑：${task.title}`}
                             onPointerDown={(event) => event.stopPropagation()}
-                            onClick={() => {
-                              setEditingTask(task);
-                              setTaskModal(true);
-                            }}
+                            onClick={() => openTaskDetails(task)}
                           >
                             ···
                           </button>
@@ -925,7 +946,14 @@ export default function Home() {
           </div>
         </article>
 
-        <aside className="today-inbox-panel">
+        <aside
+          className="today-inbox-panel"
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={dropTaskIntoInbox}
+        >
           <header>
             <div>
               <p className="eyebrow">没有具体时间</p>
@@ -935,7 +963,9 @@ export default function Home() {
               添加＋
             </button>
           </header>
-          <p className="inbox-drag-hint">把任务拖到左侧的具体时间。</p>
+          <p className="inbox-drag-hint">
+            从左侧拖回这里可取消时间；收件箱任务可拖到左侧安排。
+          </p>
           <div className="today-inbox-list">
             {inboxTasks.map((task) => (
               <article
@@ -943,6 +973,11 @@ export default function Home() {
                 draggable
                 key={task.id}
                 onDragStart={(event) => startTaskDrag(event, task.id)}
+                onDoubleClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button")) return;
+                  openTaskDetails(task);
+                }}
+                title="双击查看任务详情"
               >
                 <span className="drag-grip" aria-hidden="true">⋮⋮</span>
                 <div>
@@ -953,10 +988,7 @@ export default function Home() {
                 <button
                   draggable={false}
                   aria-label={`编辑：${task.title}`}
-                  onClick={() => {
-                    setEditingTask({ ...task, date: task.date || todayKey });
-                    setTaskModal(true);
-                  }}
+                  onClick={() => openTaskDetails(task)}
                 >
                   编辑
                 </button>

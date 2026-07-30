@@ -33,6 +33,7 @@ test("server-renders the personal workbench", async () => {
   assert.match(html, /今天要做什么？/);
   assert.match(html, /帮我安排/);
   assert.match(html, /收件箱/);
+  assert.match(html, /从左侧拖回这里可取消时间/);
   assert.equal((html.match(/class="hour-line"/g) || []).length, 14);
   assert.match(html, /08(?:<!-- -->)?:00/);
   assert.match(html, /22(?:<!-- -->)?:00/);
@@ -68,6 +69,9 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /positionOverlappingTasks/);
   assert.match(page, /text\/x-workbench-task/);
   assert.match(page, /beginTaskResize/);
+  assert.match(page, /dropTaskIntoInbox/);
+  assert.match(page, /onDoubleClick/);
+  assert.match(page, /双击查看任务详情/);
   assert.match(page, /today-hour-grid/);
   assert.match(page, /DAY_START_MINUTES = 8 \* 60/);
   assert.match(page, /DAY_END_MINUTES = 22 \* 60/);
