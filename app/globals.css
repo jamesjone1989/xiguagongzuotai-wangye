@@ -416,9 +416,9 @@ h2 {
 .character img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: 50% 12%;
-  mix-blend-mode: multiply;
+  object-fit: contain;
+  object-position: 50% 100%;
+  filter: drop-shadow(8px 10px 0 rgb(23 37 31 / 16%));
 }
 
 .character--compact {
@@ -430,8 +430,8 @@ h2 {
 }
 
 .character--compact img {
-  transform: scale(1.42);
-  object-position: 50% 12%;
+  transform: scale(1.5);
+  object-position: 50% 18%;
 }
 
 .today-grid {
@@ -640,12 +640,121 @@ h2 {
 }
 
 .month-toolbar,
+.year-toolbar,
 .date-stepper {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
   margin-bottom: 18px;
+}
+
+.year-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.year-month {
+  overflow: hidden;
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  background: var(--paper-light);
+  box-shadow: 5px 5px 0 var(--ink);
+}
+
+.year-month-heading {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-bottom: 2px solid var(--ink);
+  background: var(--sage);
+  padding: 13px 15px;
+  cursor: pointer;
+}
+
+.year-month-heading:hover {
+  background: var(--yellow);
+}
+
+.year-month-heading strong {
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 22px;
+}
+
+.year-month-heading span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.mini-week,
+.mini-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.mini-week {
+  padding: 8px 9px 4px;
+}
+
+.mini-week span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.mini-month-grid {
+  gap: 2px;
+  padding: 3px 9px 12px;
+}
+
+.mini-month-grid button {
+  position: relative;
+  display: grid;
+  aspect-ratio: 1;
+  min-width: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  font: 700 10px/1 ui-monospace, monospace;
+}
+
+.mini-month-grid button:not(:disabled):hover {
+  background: var(--yellow);
+}
+
+.mini-month-grid button.is-today {
+  outline: 2px solid var(--red);
+}
+
+.mini-month-grid button.is-muted {
+  opacity: 0;
+}
+
+.mini-month-grid button i {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--leaf);
+  font: 800 7px/1 system-ui, sans-serif;
+  font-style: normal;
+}
+
+.mini-month-grid button i.has-many {
+  background: var(--red);
+  color: white;
 }
 
 .square-button {
@@ -688,7 +797,7 @@ h2 {
 }
 
 .day-cell {
-  min-height: 112px;
+  min-height: 138px;
   border: 0;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -958,6 +1067,10 @@ h2 {
   align-items: start;
 }
 
+.diary-layout--conversation {
+  grid-template-columns: 260px 1fr;
+}
+
 .diary-shelf {
   position: sticky;
   top: 30px;
@@ -966,6 +1079,34 @@ h2 {
   background: var(--sage);
   padding: 18px;
   box-shadow: 6px 6px 0 var(--ink);
+}
+
+.shelf-heading {
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 13px;
+}
+
+.shelf-heading > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shelf-heading span {
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.shelf-heading strong {
+  transform: rotate(3deg);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--yellow);
+  padding: 5px 8px;
+  font-size: 10px;
 }
 
 .search-field {
@@ -1114,6 +1255,78 @@ h2 {
 .diary-actions > div {
   display: flex;
   gap: 9px;
+}
+
+.diary-chat-shell {
+  overflow: hidden;
+  border: 3px solid var(--ink);
+  border-radius: 22px;
+  background: var(--paper-light);
+  box-shadow: 8px 8px 0 var(--ink);
+}
+
+.diary-chat-mentor {
+  display: flex;
+  min-height: 138px;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 2px solid var(--ink);
+  background: var(--sage);
+  padding: 15px 24px;
+}
+
+.diary-chat-mentor strong {
+  display: block;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 21px;
+}
+
+.diary-chat-mentor p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.diary-message-list {
+  min-height: 330px;
+  max-height: 460px;
+}
+
+.diary-chat-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  background: #f2f0e8;
+  padding: 12px 18px;
+}
+
+.diary-chat-tools label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.diary-chat-tools label span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.diary-chat-tools select {
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: white;
+  padding: 7px 24px 7px 10px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.diary-composer {
+  background: var(--paper-light);
 }
 
 .chat-shell {
@@ -1418,6 +1631,10 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .year-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .mentor-aside {
     position: static;
     display: flex;
@@ -1471,7 +1688,7 @@ h2 {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     border-top: 2px solid var(--ink);
     background: var(--paper-light);
     padding-bottom: env(safe-area-inset-bottom);
@@ -1548,7 +1765,15 @@ h2 {
   }
 
   .day-cell {
-    min-height: 94px;
+    min-height: 126px;
+  }
+
+  .year-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .year-toolbar {
+    justify-content: center;
   }
 
   .date-stepper {
@@ -1602,6 +1827,7 @@ h2 {
 
   .diary-actions > div {
     width: 100%;
+    flex-wrap: wrap;
   }
 
   .diary-actions .button {
@@ -1634,6 +1860,34 @@ h2 {
     align-items: flex-start;
     flex-direction: column;
     gap: 9px;
+  }
+
+  .diary-chat-mentor {
+    align-items: flex-start;
+    padding: 14px 16px;
+  }
+
+  .diary-chat-mentor .character {
+    width: 80px;
+    height: 92px;
+  }
+
+  .diary-message-list {
+    min-height: 280px;
+  }
+
+  .diary-chat-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .diary-chat-tools label {
+    justify-content: space-between;
+    margin-right: 0;
+  }
+
+  .diary-chat-tools .button {
+    width: 100%;
   }
 
   .field-grid {

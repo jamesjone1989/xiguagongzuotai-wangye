@@ -32,10 +32,11 @@ test("server-renders the personal workbench", async () => {
   assert.match(html, /<title>西瓜老师·个人工作台<\/title>/);
   assert.match(html, /今天，先把重要的事放在眼前。/);
   assert.match(html, /月历/);
+  assert.match(html, /年历/);
   assert.match(html, /日程/);
   assert.match(html, /日记/);
   assert.match(html, /AI 助手/);
-  assert.match(html, /\/assets\/xigua-teacher\.png/);
+  assert.match(html, /\/assets\/xigua-teacher-cutout\.png/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
@@ -48,6 +49,9 @@ test("keeps local data and AI privacy guardrails in source", async () => {
 
   assert.match(page, /xigua-personal-desk-v1/);
   assert.match(page, /localStorage/);
+  assert.match(page, /diaryMessages/);
+  assert.match(page, /生成日记/);
+  assert.match(page, /dayTasks\.slice\(0,\s*3\)/);
   assert.match(page, /api\.deepseek\.com\/chat\/completions/);
   assert.match(page, /不得编造人物、地点、情节、时间、因果或心理活动/);
   assert.match(page, /apiKey:\s*""/);
@@ -55,5 +59,7 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(packageJson, /"name": "xigua-personal-workbench"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await access(new URL("../public/og.png", import.meta.url));
-  await access(new URL("../public/assets/xigua-teacher.png", import.meta.url));
+  await access(
+    new URL("../public/assets/xigua-teacher-cutout.png", import.meta.url),
+  );
 });

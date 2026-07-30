@@ -20,8 +20,8 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     icons: {
-      icon: "/assets/xigua-teacher.png",
-      shortcut: "/assets/xigua-teacher.png",
+      icon: "/assets/xigua-teacher-cutout.png",
+      shortcut: "/assets/xigua-teacher-cutout.png",
     },
     openGraph: {
       title,

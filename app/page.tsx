@@ -2,7 +2,14 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
-type View = "today" | "month" | "agenda" | "diary" | "ai" | "settings";
+type View =
+  | "today"
+  | "year"
+  | "month"
+  | "agenda"
+  | "diary"
+  | "ai"
+  | "settings";
 type TaskTag = "工作" | "生活" | "重要";
 
 type Task = {
@@ -35,6 +42,7 @@ type AppData = {
   tasks: Task[];
   diaries: Diary[];
   messages: ChatMessage[];
+  diaryMessages: ChatMessage[];
   apiKey: string;
 };
 
@@ -90,6 +98,13 @@ const seedData: AppData = {
       content: "今天想先梳理任务，还是写下一个刚刚发生的瞬间？",
     },
   ],
+  diaryMessages: [
+    {
+      id: "diary-welcome",
+      role: "assistant",
+      content: "今天，想从哪里说起？可以从一个刚刚发生的瞬间开始。",
+    },
+  ],
   apiKey: "",
 };
 
@@ -103,6 +118,9 @@ function safeLoad(): AppData {
       tasks: Array.isArray(parsed.tasks) ? parsed.tasks : seedData.tasks,
       diaries: Array.isArray(parsed.diaries) ? parsed.diaries : [],
       messages: Array.isArray(parsed.messages) ? parsed.messages : seedData.messages,
+      diaryMessages: Array.isArray(parsed.diaryMessages)
+        ? parsed.diaryMessages
+        : seedData.diaryMessages,
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
     };
   } catch {
@@ -112,6 +130,7 @@ function safeLoad(): AppData {
 
 const navItems: { id: View; label: string; hint: string }[] = [
   { id: "today", label: "今天", hint: "此刻" },
+  { id: "year", label: "年历", hint: "全年" },
   { id: "month", label: "月历", hint: "全月" },
   { id: "agenda", label: "日程", hint: "一天" },
   { id: "diary", label: "日记", hint: "回声" },
@@ -145,7 +164,7 @@ function Character({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`character ${compact ? "character--compact" : ""}`}>
       <img
-        src="/assets/xigua-teacher.png"
+        src="/assets/xigua-teacher-cutout.png"
         alt="戴西瓜帽、圆框眼镜的西瓜老师"
       />
     </div>
@@ -171,6 +190,10 @@ export default function Home() {
     updatedAt: Date.now(),
   });
   const [diarySearch, setDiarySearch] = useState("");
+  const [diaryInput, setDiaryInput] = useState("");
+  const [diaryView, setDiaryView] = useState<"chat" | "draft">("chat");
+  const [diaryLength, setDiaryLength] = useState<"简洁" | "长文">("简洁");
+  const [isDiaryThinking, setIsDiaryThinking] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [notice, setNotice] = useState("");
@@ -353,6 +376,147 @@ export default function Home() {
     }
   }
 
+  async function sendDiaryMessage() {
+    const value = diaryInput.trim();
+    if (!value || isDiaryThinking) return;
+    if (!data.apiKey) {
+      setView("settings");
+      setNotice("先在设置里填入 DeepSeek API Key，才能开始对话日记。");
+      return;
+    }
+    const userMessage: ChatMessage = { id: uid(), role: "user", content: value };
+    const nextMessages = [...data.diaryMessages, userMessage];
+    setData((current) => ({ ...current, diaryMessages: nextMessages }));
+    setDiaryInput("");
+    setIsDiaryThinking(true);
+    try {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          temperature: 0.45,
+          messages: [
+            {
+              role: "system",
+              content:
+                "你是西瓜老师，也是一位克制、温和的日记陪伴者。基于用户刚刚说过的内容，每次只问一个具体、有用的问题，帮助用户回到当时的瞬间、感受、意义或下一步。回复要短，不做诊断，不连续夸奖，不重复用户大段原话。只能使用用户对话中明确出现或可直接推断的信息，不得编造人物、地点、情节、时间、因果或心理活动。",
+            },
+            ...nextMessages.slice(-16).map(({ role, content }) => ({ role, content })),
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error("DeepSeek 请求失败");
+      const result = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const content =
+        result.choices?.[0]?.message?.content?.trim() ||
+        "这件事里，最让你记住的是哪个瞬间？";
+      setData((current) => ({
+        ...current,
+        diaryMessages: [
+          ...current.diaryMessages,
+          { id: uid(), role: "assistant", content },
+        ],
+      }));
+    } catch {
+      setNotice("没有连接上 DeepSeek，请检查 API Key 或网络后再试。");
+    } finally {
+      setIsDiaryThinking(false);
+    }
+  }
+
+  async function generateDiaryFromConversation() {
+    const sourceMessages = data.diaryMessages.filter(
+      (message) => message.role === "user",
+    );
+    if (!sourceMessages.length) {
+      setNotice("先聊几句，再生成日记。");
+      return;
+    }
+    if (!data.apiKey) {
+      setView("settings");
+      setNotice("先在设置里填入 DeepSeek API Key。");
+      return;
+    }
+    setIsDiaryThinking(true);
+    try {
+      const modeRule =
+        diaryLength === "简洁"
+          ? "写 3 至 6 个自然段；如果素材很少，就写得更短。"
+          : "在素材足够时写 5 至 9 个自然段；素材不足时不要填充或扩写情节。";
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          temperature: 0.35,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: `请把下面的对话整理为第一人称中文日记。${modeRule}
+只能使用对话中明确出现或可直接推断的信息。不要编造未出现的人物、地点、情节、时间、因果或心理活动。信息不足时宁可写短。语言自然克制，不要鸡汤化。
+只输出 JSON：{"title":"24字以内标题","paragraphs":["段落1","段落2"],"takeaway":"30字以内今日所得"}。`,
+            },
+            {
+              role: "user",
+              content: data.diaryMessages
+                .map(
+                  (message) =>
+                    `${message.role === "assistant" ? "西瓜老师" : "我"}：${message.content}`,
+                )
+                .join("\n"),
+            },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error("DeepSeek 请求失败");
+      const result = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const raw = result.choices?.[0]?.message?.content?.trim() || "";
+      const jsonText = raw
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "");
+      const parsed = JSON.parse(jsonText) as {
+        title?: string;
+        paragraphs?: string[];
+        takeaway?: string;
+      };
+      if (!parsed.title || !Array.isArray(parsed.paragraphs)) {
+        throw new Error("无效的日记结构");
+      }
+      const body = [
+        ...parsed.paragraphs.filter(Boolean),
+        parsed.takeaway ? `今日所得：${parsed.takeaway}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      setDiaryDraft({
+        id: "",
+        date: selectedDate,
+        title: parsed.title,
+        body,
+        mood: "平静",
+        updatedAt: Date.now(),
+      });
+      setDiaryView("draft");
+      setNotice("日记草稿已经生成，请确认修改后再保存。");
+    } catch {
+      setNotice("这次没有整理成日记，请稍后再试。");
+    } finally {
+      setIsDiaryThinking(false);
+    }
+  }
+
   function useLastReplyAsDraft() {
     const reply = [...data.messages]
       .reverse()
@@ -367,6 +531,7 @@ export default function Home() {
       updatedAt: Date.now(),
     });
     setView("diary");
+    setDiaryView("draft");
     setNotice("已放入日记草稿，请确认修改后再保存。");
   }
 
@@ -403,6 +568,9 @@ export default function Home() {
           messages: Array.isArray(parsed.messages)
             ? parsed.messages
             : seedData.messages,
+          diaryMessages: Array.isArray(parsed.diaryMessages)
+            ? parsed.diaryMessages
+            : seedData.diaryMessages,
           apiKey: current.apiKey,
         }));
         setNotice("数据已导入，API Key 保持不变。");
@@ -494,6 +662,98 @@ export default function Home() {
     </main>
   );
 
+  const renderYear = () => {
+    const year = monthCursor.getFullYear();
+    return (
+      <main className="content" id="main-content">
+        <PageHeader eyebrow="十二个月，一眼看见" title={`${year} 年`} />
+        <div className="year-toolbar">
+          <button
+            className="square-button"
+            aria-label="上一年"
+            onClick={() => setMonthCursor(new Date(year - 1, 0, 1))}
+          >
+            ←
+          </button>
+          <button
+            className="button button--plain"
+            onClick={() => {
+              const now = new Date();
+              setMonthCursor(new Date(now.getFullYear(), now.getMonth(), 1));
+            }}
+          >
+            回到今年
+          </button>
+          <button
+            className="square-button"
+            aria-label="下一年"
+            onClick={() => setMonthCursor(new Date(year + 1, 0, 1))}
+          >
+            →
+          </button>
+        </div>
+        <section className="year-grid">
+          {Array.from({ length: 12 }, (_, monthIndex) => {
+            const cursor = new Date(year, monthIndex, 1);
+            const days = monthDays(cursor);
+            const monthTaskCount = data.tasks.filter((task) =>
+              task.date.startsWith(`${year}-${pad(monthIndex + 1)}`),
+            ).length;
+            return (
+              <article className="year-month" key={monthIndex}>
+                <button
+                  className="year-month-heading"
+                  onClick={() => {
+                    setMonthCursor(cursor);
+                    setView("month");
+                  }}
+                >
+                  <strong>{monthIndex + 1} 月</strong>
+                  <span>{monthTaskCount ? `${monthTaskCount} 项任务` : "留白"}</span>
+                </button>
+                <div className="mini-week">
+                  {"一二三四五六日".split("").map((day) => (
+                    <span key={day}>{day}</span>
+                  ))}
+                </div>
+                <div className="mini-month-grid">
+                  {days.map((date) => {
+                    const dateKey = toDateKey(date);
+                    const inMonth = date.getMonth() === monthIndex;
+                    const dayTaskCount = data.tasks.filter(
+                      (task) => task.date === dateKey,
+                    ).length;
+                    return (
+                      <button
+                        className={`${inMonth ? "" : "is-muted"} ${
+                          dateKey === todayKey ? "is-today" : ""
+                        }`}
+                        disabled={!inMonth}
+                        key={dateKey}
+                        aria-label={`${dateKey}${dayTaskCount ? `，${dayTaskCount} 项任务` : ""}`}
+                        onClick={() => {
+                          setSelectedDate(dateKey);
+                          setView("agenda");
+                        }}
+                      >
+                        <span>{date.getDate()}</span>
+                        {dayTaskCount > 0 && (
+                          <i className={dayTaskCount >= 3 ? "has-many" : ""}>
+                            {Math.min(dayTaskCount, 3)}
+                          </i>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      </main>
+    );
+  };
+
   const renderMonth = () => {
     const days = monthDays(monthCursor);
     const title = `${monthCursor.getFullYear()} 年 ${monthCursor.getMonth() + 1} 月`;
@@ -564,12 +824,12 @@ export default function Home() {
                 >
                   <span className="day-number">{date.getDate()}</span>
                   <span className="day-tasks">
-                    {dayTasks.slice(0, 2).map((task) => (
+                    {dayTasks.slice(0, 3).map((task) => (
                       <span className={`mini-task ${task.done ? "is-done" : ""}`} key={task.id}>
                         {task.title}
                       </span>
                     ))}
-                    {dayTasks.length > 2 && <small>还有 {dayTasks.length - 2} 项</small>}
+                    {dayTasks.length > 3 && <small>还有 {dayTasks.length - 3} 项</small>}
                   </span>
                 </button>
               );
@@ -655,24 +915,36 @@ export default function Home() {
   const renderDiary = () => (
     <main className="content" id="main-content">
       <PageHeader
-        eyebrow="把生活写回自己手里"
-        title="日记"
-        actionLabel="新建日记"
-        onAction={() =>
-          setDiaryDraft({
-            id: "",
-            date: selectedDate,
-            title: "",
-            body: "",
-            mood: "平静",
-            updatedAt: Date.now(),
-          })
-        }
+        eyebrow="对话型日记"
+        title={diaryView === "chat" ? "今天，想从哪里说起？" : "日记草稿"}
+        actionLabel={diaryView === "chat" ? "新建对话" : "返回对话"}
+        onAction={() => {
+          if (diaryView === "draft") {
+            setDiaryView("chat");
+            return;
+          }
+          if (
+            data.diaryMessages.length > 1 &&
+            !window.confirm("开始新对话会清空当前日记对话，确定继续吗？")
+          ) {
+            return;
+          }
+          setData((current) => ({
+            ...current,
+            diaryMessages: seedData.diaryMessages,
+          }));
+        }}
       />
-      <section className="diary-layout">
+      <section className="diary-layout diary-layout--conversation">
         <aside className="diary-shelf">
+          <div className="shelf-heading">
+            <div>
+              <span>往日回声</span>
+              <strong>{data.diaries.length} 篇</strong>
+            </div>
+          </div>
           <label className="search-field">
-            <span>搜索往日回声</span>
+            <span>搜索日记</span>
             <input
               value={diarySearch}
               onChange={(event) => setDiarySearch(event.target.value)}
@@ -685,7 +957,10 @@ export default function Home() {
                 <button
                   className={`diary-row ${diary.id === diaryDraft.id ? "is-active" : ""}`}
                   key={diary.id}
-                  onClick={() => setDiaryDraft(diary)}
+                  onClick={() => {
+                    setDiaryDraft(diary);
+                    setDiaryView("draft");
+                  }}
                 >
                   <span>{new Date(`${diary.date}T12:00:00`).getDate()}</span>
                   <div>
@@ -699,60 +974,144 @@ export default function Home() {
             )}
           </div>
         </aside>
-        <article className="diary-paper">
-          <div className="diary-meta">
-            <input
-              type="date"
-              aria-label="日记日期"
-              value={diaryDraft.date}
-              onChange={(event) =>
-                setDiaryDraft((draft) => ({ ...draft, date: event.target.value }))
-              }
-            />
-            <select
-              aria-label="今天的心情"
-              value={diaryDraft.mood}
-              onChange={(event) =>
-                setDiaryDraft((draft) => ({ ...draft, mood: event.target.value }))
-              }
-            >
-              {["平静", "开心", "疲惫", "期待", "有点乱"].map((mood) => (
-                <option key={mood}>{mood}</option>
+
+        {diaryView === "chat" ? (
+          <article className="diary-chat-shell">
+            <div className="diary-chat-mentor">
+              <Character compact />
+              <div>
+                <strong>西瓜老师在这里听你说。</strong>
+                <p>一次只聊一个具体的瞬间。你准备好后，再主动生成日记。</p>
+              </div>
+            </div>
+            <div className="message-list diary-message-list" aria-live="polite">
+              {data.diaryMessages.map((message) => (
+                <div className={`message message--${message.role}`} key={message.id}>
+                  <span>{message.role === "assistant" ? "西瓜老师" : "我"}</span>
+                  <p>{message.content}</p>
+                </div>
               ))}
-            </select>
-          </div>
-          <input
-            className="diary-title"
-            aria-label="日记标题"
-            value={diaryDraft.title}
-            onChange={(event) =>
-              setDiaryDraft((draft) => ({ ...draft, title: event.target.value }))
-            }
-            placeholder="给今天起一个标题"
-          />
-          <textarea
-            className="diary-body"
-            aria-label="日记正文"
-            value={diaryDraft.body}
-            onChange={(event) =>
-              setDiaryDraft((draft) => ({ ...draft, body: event.target.value }))
-            }
-            placeholder="今天，什么值得被记住？"
-          />
-          <div className="diary-actions">
-            <span>内容只保存在你的浏览器中</span>
-            <div>
-              {diaryDraft.id && (
-                <button className="button button--plain danger" onClick={() => deleteDiary(diaryDraft.id)}>
-                  删除
-                </button>
+              {isDiaryThinking && (
+                <div className="thinking">西瓜老师正在认真听……</div>
               )}
-              <button className="button button--dark" onClick={saveDiary}>
-                保存日记
+            </div>
+            <div className="diary-chat-tools">
+              <label>
+                <span>生成长度</span>
+                <select
+                  value={diaryLength}
+                  onChange={(event) =>
+                    setDiaryLength(event.target.value as "简洁" | "长文")
+                  }
+                >
+                  <option>简洁</option>
+                  <option>长文</option>
+                </select>
+              </label>
+              <button
+                className="button button--dark"
+                disabled={isDiaryThinking}
+                onClick={() => void generateDiaryFromConversation()}
+              >
+                生成日记
+              </button>
+              <button
+                className="button button--plain danger"
+                onClick={() => {
+                  if (!window.confirm("是否要清空当前日记对话？")) return;
+                  setData((current) => ({
+                    ...current,
+                    diaryMessages: seedData.diaryMessages,
+                  }));
+                }}
+              >
+                清空对话
               </button>
             </div>
-          </div>
-        </article>
+            <div className="chat-composer diary-composer">
+              <textarea
+                value={diaryInput}
+                onChange={(event) => setDiaryInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendDiaryMessage();
+                  }
+                }}
+                placeholder="现在，有什么想聊的吗？"
+                aria-label="写下今天想说的话"
+              />
+              <button
+                className="button button--dark"
+                disabled={isDiaryThinking || !diaryInput.trim()}
+                onClick={() => void sendDiaryMessage()}
+              >
+                发送
+              </button>
+            </div>
+          </article>
+        ) : (
+          <article className="diary-paper">
+            <div className="diary-meta">
+              <input
+                type="date"
+                aria-label="日记日期"
+                value={diaryDraft.date}
+                onChange={(event) =>
+                  setDiaryDraft((draft) => ({ ...draft, date: event.target.value }))
+                }
+              />
+              <select
+                aria-label="今天的心情"
+                value={diaryDraft.mood}
+                onChange={(event) =>
+                  setDiaryDraft((draft) => ({ ...draft, mood: event.target.value }))
+                }
+              >
+                {["平静", "开心", "疲惫", "期待", "有点乱"].map((mood) => (
+                  <option key={mood}>{mood}</option>
+                ))}
+              </select>
+            </div>
+            <input
+              className="diary-title"
+              aria-label="日记标题"
+              value={diaryDraft.title}
+              onChange={(event) =>
+                setDiaryDraft((draft) => ({ ...draft, title: event.target.value }))
+              }
+              placeholder="给今天起一个标题"
+            />
+            <textarea
+              className="diary-body"
+              aria-label="日记正文"
+              value={diaryDraft.body}
+              onChange={(event) =>
+                setDiaryDraft((draft) => ({ ...draft, body: event.target.value }))
+              }
+              placeholder="对话整理出的日记会出现在这里。"
+            />
+            <div className="diary-actions">
+              <span>这是草稿，只有点击保存后才会进入往日回声</span>
+              <div>
+                {diaryDraft.id && (
+                  <button
+                    className="button button--plain danger"
+                    onClick={() => deleteDiary(diaryDraft.id)}
+                  >
+                    删除
+                  </button>
+                )}
+                <button className="button button--plain" onClick={() => setDiaryView("chat")}>
+                  返回对话
+                </button>
+                <button className="button button--dark" onClick={saveDiary}>
+                  保存日记
+                </button>
+              </div>
+            </div>
+          </article>
+        )}
       </section>
     </main>
   );
@@ -917,6 +1276,7 @@ export default function Home() {
           <button onClick={() => setView("settings")}>设置</button>
         </header>
         {view === "today" && renderToday()}
+        {view === "year" && renderYear()}
         {view === "month" && renderMonth()}
         {view === "agenda" && renderAgenda()}
         {view === "diary" && renderDiary()}
@@ -925,7 +1285,7 @@ export default function Home() {
       </div>
 
       <nav className="mobile-nav" aria-label="手机端导航">
-        {navItems.slice(0, 5).map((item) => (
+        {navItems.slice(0, 6).map((item) => (
           <button
             className={view === item.id ? "is-active" : ""}
             key={item.id}
