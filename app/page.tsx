@@ -16,6 +16,7 @@ type View =
   | "month"
   | "agenda"
   | "diary"
+  | "brief"
   | "settings";
 type TaskTag = "工作" | "生活" | "重要";
 
@@ -84,6 +85,24 @@ const uid = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
 
+function shiftDateKey(dateKey: string, amount: number) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + amount);
+  return toDateKey(date);
+}
+
+function startOfWeekKey(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - mondayOffset);
+  return toDateKey(date);
+}
+
+function briefTaskLine(task: Task) {
+  const notes = task.notes.trim();
+  return `${task.title.trim()}${notes ? `：${notes}` : "。"}`;
+}
+
 function withoutLegacySeedTasks(tasks: Task[]) {
   return tasks.filter((task) => !LEGACY_SEED_TASK_IDS.has(task.id));
 }
@@ -140,6 +159,7 @@ const navItems: { id: View; label: string; hint: string }[] = [
   { id: "year", label: "年历", hint: "全年" },
   { id: "month", label: "月历", hint: "全月" },
   { id: "agenda", label: "日程", hint: "一天" },
+  { id: "brief", label: "简报", hint: "一周" },
   { id: "diary", label: "日记", hint: "回声" },
   { id: "settings", label: "设置", hint: "本地" },
 ];
@@ -280,6 +300,13 @@ export default function Home() {
   const [isDiaryThinking, setIsDiaryThinking] = useState(false);
   const [todayCapture, setTodayCapture] = useState("");
   const [isTaskExtracting, setIsTaskExtracting] = useState(false);
+  const [briefStartDate, setBriefStartDate] = useState(() => startOfWeekKey(todayKey));
+  const [briefEndDate, setBriefEndDate] = useState(() =>
+    shiftDateKey(startOfWeekKey(todayKey), 6),
+  );
+  const [briefExtra, setBriefExtra] = useState("");
+  const [briefDraft, setBriefDraft] = useState("");
+  const [isBriefGenerating, setIsBriefGenerating] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -323,6 +350,22 @@ export default function Home() {
       `${diary.title}${diary.body}`.toLowerCase().includes(diarySearch.toLowerCase()),
     )
     .sort((a, b) => b.updatedAt - a.updatedAt);
+  const briefNextStartDate = shiftDateKey(briefEndDate, 1);
+  const briefNextEndDate = shiftDateKey(briefNextStartDate, 6);
+  const briefWeekTasks = useMemo(
+    () =>
+      data.tasks
+        .filter((task) => task.date >= briefStartDate && task.date <= briefEndDate)
+        .sort(compareTasks),
+    [data.tasks, briefStartDate, briefEndDate],
+  );
+  const briefNextWeekTasks = useMemo(
+    () =>
+      data.tasks
+        .filter((task) => task.date >= briefNextStartDate && task.date <= briefNextEndDate)
+        .sort(compareTasks),
+    [data.tasks, briefNextStartDate, briefNextEndDate],
+  );
 
   function updateTask(task: Task) {
     setData((current) => ({
@@ -1311,6 +1354,134 @@ export default function Home() {
     setMonthCursor(new Date(date.getFullYear(), date.getMonth(), 1));
   }
 
+  function localBrief(tasks: Task[], nextTasks: Task[]) {
+    const currentLines = tasks.length
+      ? tasks.map((task) => briefTaskLine(task))
+      : ["暂无记录。"];
+    const nextLines = nextTasks.length
+      ? nextTasks.map((task) => briefTaskLine(task))
+      : ["暂无计划。"];
+    return [
+      "【本周周报】",
+      "",
+      ...currentLines.map((line, index) => `${index + 1}. ${line}`),
+      "",
+      "【下周计划】",
+      "",
+      ...nextLines.map((line, index) => `${index + 1}. ${line}`),
+    ].join("\n");
+  }
+
+  async function generateBrief() {
+    if (briefEndDate < briefStartDate) {
+      setNotice("结束日期需要晚于开始日期。");
+      return;
+    }
+    setIsBriefGenerating(true);
+    const serializeTasks = (tasks: Task[]) =>
+      tasks.map((task) => ({
+        title: task.title,
+        date: task.date,
+        start: task.start,
+        end: task.end,
+        tag: task.tag,
+        notes: task.notes,
+        done: task.done,
+      }));
+    const fallback = localBrief(briefWeekTasks, briefNextWeekTasks);
+
+    if (!data.apiKey) {
+      setBriefDraft(fallback);
+      setIsBriefGenerating(false);
+      setNotice("已按任务生成简报，可以继续修改。若需 AI 归纳，请先配置 DeepSeek Key。");
+      return;
+    }
+
+    try {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content: [
+                "你是一个克制、准确的工作简报助手。请根据用户提供的任务资料生成一份中文简报。",
+                "严格只输出以下格式，不要增加开场白、总结或其他标题：",
+                "【本周周报】",
+                "",
+                "1. 事项：具体进展或动作。",
+                "2. 事项：具体进展或动作。",
+                "",
+                "【下周计划】",
+                "",
+                "1. 计划事项",
+                "2. 计划事项",
+                "",
+                "只整理资料中出现的内容，不得编造人物、公司、地点、进展或原因。每个事项尽量合并相关任务，表达简洁、适合直接发给同事。",
+              ].join("\n"),
+            },
+            {
+              role: "user",
+              content: [
+                `本周日期：${briefStartDate} 至 ${briefEndDate}`,
+                `下周日期：${briefNextStartDate} 至 ${briefNextEndDate}`,
+                "",
+                "本周任务：",
+                JSON.stringify(serializeTasks(briefWeekTasks), null, 2),
+                "",
+                "下周任务：",
+                JSON.stringify(serializeTasks(briefNextWeekTasks), null, 2),
+                "",
+                "补充素材：",
+                briefExtra.trim() || "无",
+              ].join("\n"),
+            },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error("DeepSeek 请求失败");
+      const result = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const raw = result.choices?.[0]?.message?.content?.trim() || "";
+      const cleaned = raw
+        .replace(/^```(?:text|markdown)?\s*/i, "")
+        .replace(/\s*```$/, "")
+        .trim();
+      if (!cleaned.includes("【本周周报】") || !cleaned.includes("【下周计划】")) {
+        throw new Error("简报格式不完整");
+      }
+      setBriefDraft(cleaned);
+      setNotice("简报已经生成，可以继续修改后复制。");
+    } catch {
+      setBriefDraft(fallback);
+      setNotice("AI 生成没有完成，已先按任务生成一版简报。");
+    } finally {
+      setIsBriefGenerating(false);
+    }
+  }
+
+  async function copyBrief() {
+    if (!briefDraft.trim()) return;
+    try {
+      await navigator.clipboard.writeText(briefDraft);
+      setNotice("简报已复制。");
+    } catch {
+      setNotice("复制没有成功，请直接选中简报文字复制。");
+    }
+  }
+
+  function shiftBriefWeek(amount: number) {
+    setBriefStartDate((current) => shiftDateKey(current, amount * 7));
+    setBriefEndDate((current) => shiftDateKey(current, amount * 7));
+  }
+
   const renderDiary = () => (
     <main className="content diary-page" id="main-content">
       <PageHeader
@@ -1508,6 +1679,119 @@ export default function Home() {
     </main>
   );
 
+  const renderBrief = () => (
+    <main className="content brief-page" id="main-content">
+      <PageHeader
+        eyebrow="把一周收拢成几句话"
+        title="生成简报"
+        actionLabel={isBriefGenerating ? "正在生成…" : "生成简报"}
+        onAction={() => void generateBrief()}
+      />
+      <section className="brief-range-card">
+        <div>
+          <p className="eyebrow">选择时间范围</p>
+          <h2>{briefStartDate} 至 {briefEndDate}</h2>
+          <span>下周计划自动取结束日期之后的 7 天。</span>
+        </div>
+        <div className="brief-range-controls">
+          <button type="button" aria-label="上一周" onClick={() => shiftBriefWeek(-1)}>←</button>
+          <label>
+            <span>开始</span>
+            <input
+              type="date"
+              aria-label="简报开始日期"
+              value={briefStartDate}
+              onChange={(event) => {
+                if (!event.target.value) return;
+                setBriefStartDate(event.target.value);
+                setBriefEndDate(shiftDateKey(event.target.value, 6));
+              }}
+            />
+          </label>
+          <span className="brief-range-separator">至</span>
+          <label>
+            <span>结束</span>
+            <input
+              type="date"
+              aria-label="简报结束日期"
+              value={briefEndDate}
+              onChange={(event) => {
+                if (event.target.value) setBriefEndDate(event.target.value);
+              }}
+            />
+          </label>
+          <button type="button" aria-label="下一周" onClick={() => shiftBriefWeek(1)}>→</button>
+        </div>
+      </section>
+      <section className="brief-layout">
+        <article className="brief-material-card">
+          <div className="brief-card-heading">
+            <div>
+              <p className="eyebrow">生成依据</p>
+              <h2>本周发生了什么？</h2>
+            </div>
+            <span className="brief-count-badge">{briefWeekTasks.length} 项</span>
+          </div>
+          <div className="brief-count-grid">
+            <div>
+              <span>本周任务</span>
+              <strong>{briefWeekTasks.length}</strong>
+            </div>
+            <div>
+              <span>下周任务</span>
+              <strong>{briefNextWeekTasks.length}</strong>
+            </div>
+          </div>
+          <label className="field brief-extra-field">
+            <span>补充素材（可选）</span>
+            <textarea
+              value={briefExtra}
+              onChange={(event) => setBriefExtra(event.target.value)}
+              placeholder="补充任务里没有写到的进展、背景或下周安排"
+            />
+          </label>
+          <p className="brief-hint">
+            简报会读取选中日期范围内的任务；没有具体时间的收件箱任务也会被纳入。
+          </p>
+        </article>
+        <article className="brief-output-card">
+          <div className="brief-card-heading">
+            <div>
+              <p className="eyebrow">可编辑结果</p>
+              <h2>简报内容</h2>
+            </div>
+            <span>生成后可直接修改</span>
+          </div>
+          <textarea
+            className="brief-output"
+            value={briefDraft}
+            onChange={(event) => setBriefDraft(event.target.value)}
+            placeholder="点击右上角“生成简报”，这里会出现：\n\n【本周周报】\n\n1. ……\n\n【下周计划】\n\n1. ……"
+            aria-label="简报内容"
+          />
+          <div className="brief-actions">
+            <button
+              type="button"
+              className="button button--plain"
+              disabled={!briefDraft.trim()}
+              onClick={() => void copyBrief()}
+            >
+              复制简报
+            </button>
+            <button
+              type="button"
+              className="button button--dark"
+              disabled={isBriefGenerating}
+              onClick={() => void generateBrief()}
+            >
+              {isBriefGenerating ? "正在生成…" : "重新生成"}
+            </button>
+          </div>
+        </article>
+      </section>
+    </main>
+  );
+
   const renderSettings = () => (
     <main className="content content--narrow" id="main-content">
       <PageHeader eyebrow="安静地配置一次" title="设置" />
@@ -1611,6 +1895,7 @@ export default function Home() {
         {view === "year" && renderYear()}
         {view === "month" && renderMonth()}
         {view === "agenda" && renderAgenda()}
+        {view === "brief" && renderBrief()}
         {view === "diary" && renderDiary()}
         {view === "settings" && renderSettings()}
       </div>

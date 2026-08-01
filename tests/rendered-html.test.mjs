@@ -44,6 +44,7 @@ test("server-renders the personal workbench", async () => {
   assert.match(html, /月历/);
   assert.match(html, /年历/);
   assert.match(html, /日程/);
+  assert.match(html, /简报/);
   assert.match(html, /日记/);
   assert.doesNotMatch(html, /AI 助手/);
   assert.match(html, /\/assets\/xigua-teacher-user-cutout\.png/);
@@ -84,6 +85,11 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /DAY_END_MINUTES = 22 \* 60/);
   assert.match(page, /HOUR_HEIGHT = 36/);
   assert.match(page, /extractTodayTasks/);
+  assert.match(page, /generateBrief/);
+  assert.match(page, /briefStartDate/);
+  assert.match(page, /【本周周报】/);
+  assert.match(page, /【下周计划】/);
+  assert.match(page, /copyBrief/);
   assert.match(page, /选择的日期是 \$\{selectedDate\}/);
   assert.match(page, /date: selectedDate/);
   assert.match(page, /data\.tasks\.filter\(\(task\) => !task\.start\)/);
@@ -103,6 +109,8 @@ test("keeps local data and AI privacy guardrails in source", async () => {
     /\.task-modal \.field-grid \{[\s\S]*grid-template-columns: 1\.25fr 0\.8fr 1fr 1fr/,
   );
   assert.match(styles, /\.today-hour-grid \{[\s\S]*height: 504px/);
+  assert.match(styles, /\.brief-layout \{[\s\S]*grid-template-columns:/);
+  assert.match(styles, /\.brief-output \{[\s\S]*min-height: 420px/);
   assert.match(
     styles,
     /\.month-page \.day-tasks \{[^}]*min-height: 65px[^}]*align-content: start/,
