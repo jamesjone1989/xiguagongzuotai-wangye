@@ -2544,6 +2544,11 @@ h2 {
   margin-top: 14px;
 }
 
+.modal-actions .modal-delete {
+  margin-right: auto;
+  color: #b53b34;
+}
+
 .toast {
   position: fixed;
   z-index: 100;

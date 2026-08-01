@@ -77,6 +77,8 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /dropTaskIntoInbox/);
   assert.match(page, /onDoubleClick/);
   assert.match(page, /双击查看任务详情/);
+  assert.match(page, /删除任务/);
+  assert.match(page, /onDelete/);
   assert.match(page, /today-hour-grid/);
   assert.match(page, /DAY_START_MINUTES = 8 \* 60/);
   assert.match(page, /DAY_END_MINUTES = 22 \* 60/);

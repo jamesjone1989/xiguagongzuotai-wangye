@@ -453,11 +453,12 @@ export default function Home() {
   }
 
   function removeTask(id: string) {
-    if (!window.confirm("确定删除这项任务吗？")) return;
+    if (!window.confirm("确定删除这项任务吗？")) return false;
     setData((current) => ({
       ...current,
       tasks: current.tasks.filter((task) => task.id !== id),
     }));
+    return true;
   }
 
   function openNewTask(date = selectedDate) {
@@ -1641,6 +1642,16 @@ export default function Home() {
             setTaskModal(false);
             setNotice(task.start ? "任务已经放进时间线。" : "任务已经收进收件箱。");
           }}
+          onDelete={
+            data.tasks.some((task) => task.id === editingTask.id)
+              ? () => {
+                  if (!removeTask(editingTask.id)) return;
+                  setTaskModal(false);
+                  setEditingTask(null);
+                  setNotice("任务已删除。");
+                }
+              : undefined
+          }
         />
       )}
 
@@ -1695,12 +1706,14 @@ function TaskModal({
   onSave,
   onClose,
   onNeedApiKey,
+  onDelete,
 }: {
   task: Task;
   apiKey: string;
   onSave: (task: Task) => void;
   onClose: () => void;
   onNeedApiKey: () => void;
+  onDelete?: () => void;
 }) {
   const [draft, setDraft] = useState(task);
   const [timeError, setTimeError] = useState("");
@@ -1900,6 +1913,11 @@ function TaskModal({
           />
         </label>
         <div className="modal-actions">
+          {onDelete && (
+            <button type="button" className="button button--plain modal-delete" onClick={onDelete}>
+              删除任务
+            </button>
+          )}
           <button type="button" className="button button--plain" onClick={onClose}>
             取消
           </button>
