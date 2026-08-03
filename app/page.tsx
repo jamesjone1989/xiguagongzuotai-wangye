@@ -391,7 +391,7 @@ export default function Home() {
     return true;
   }
 
-  async function syncNow() {
+  async function syncNow(options: { silent?: boolean } = {}) {
     if (!hydrated) return;
     setSyncStatus("syncing");
     try {
@@ -403,7 +403,9 @@ export default function Home() {
       };
       if (response.status === 401) {
         setSyncStatus("needs-login");
-        setNotice("请先登录 ChatGPT，再回来点击同步。当前设备数据不会丢失。");
+        if (!options.silent) {
+          setNotice("请先登录 ChatGPT，再回来点击同步。当前设备数据不会丢失。");
+        }
         return;
       }
       if (!response.ok) throw new Error(payload.error || "同步失败");
@@ -434,7 +436,7 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void syncNow();
+    void syncNow({ silent: true });
     // 只在首次恢复本地数据后尝试一次；匿名访客会自然回到本机模式。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
