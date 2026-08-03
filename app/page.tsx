@@ -594,9 +594,9 @@ export default function Home() {
           messages: [
             {
               role: "system",
-              content: `把用户写下的内容提取为所选日期的待办任务。选择的日期是 ${selectedDate}。
-每项任务标题要简短。只有用户明确说出具体时间时，才填写 start 和 end；不得猜测或补造时间。没有具体时间时 start 和 end 都为空字符串，任务将进入收件箱。tag 只能是 工作、生活、重要。
-只输出 JSON：{"tasks":[{"title":"任务标题","date":"${selectedDate}","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充"}]}。`,
+              content: `把用户写下的内容提取为待办任务。选择的日期是 ${selectedDate}，它是默认日期；但用户明确说出其他日期时必须使用用户说出的日期。例如“2026年8月6日17点汇报工作”应转换为 date="2026-08-06"、start="17:00"。
+每项任务标题要简短。明确说出日期时将中文日期转换为 YYYY-MM-DD；明确说出具体时间时转换为 HH:mm。没有明确日期时使用默认日期 ${selectedDate}；没有具体时间时 start 和 end 都为空字符串，任务将进入跨日期收件箱。没有说结束时间时 end 留空。不得猜测或补造日期、时间。tag 只能是 工作、生活、重要。
+只输出 JSON：{"tasks":[{"title":"任务标题","date":"YYYY-MM-DD","start":"HH:mm 或空字符串","end":"HH:mm 或空字符串","tag":"工作|生活|重要","notes":"可选补充"}]}。`,
             },
             { role: "user", content: value },
           ],
@@ -613,6 +613,9 @@ export default function Home() {
       const tasks = (Array.isArray(parsed.tasks) ? parsed.tasks : [])
         .filter((task) => task.title?.trim())
         .map((task) => {
+          const date = /^\d{4}-\d{2}-\d{2}$/.test(task.date || "")
+            ? task.date || selectedDate
+            : selectedDate;
           const start = /^\d{2}:\d{2}$/.test(task.start || "") ? task.start || "" : "";
           const end = start && /^\d{2}:\d{2}$/.test(task.end || "") ? task.end || "" : "";
           const tag: TaskTag = ["工作", "生活", "重要"].includes(task.tag || "")
@@ -621,7 +624,7 @@ export default function Home() {
           return {
             id: uid(),
             title: task.title!.trim(),
-            date: selectedDate,
+            date,
             start,
             end,
             tag,
@@ -636,7 +639,7 @@ export default function Home() {
       setNotice(
         inboxCount
           ? `已提取 ${tasks.length} 项，其中 ${inboxCount} 项进入收件箱。`
-          : `已把 ${tasks.length} 项任务放进今天的时间线。`,
+          : `已把 ${tasks.length} 项任务放进 ${selectedDate} 的时间线。`,
       );
     } catch {
       setNotice("这次没有提取成功，请换一种更直接的说法再试。");
@@ -1124,7 +1127,7 @@ export default function Home() {
             const monthKey = `${year}-${pad(monthIndex + 1)}`;
             const monthNote = data.monthlyNotes.find((note) => note.month === monthKey);
             const monthTaskCount = data.tasks.filter((task) =>
-              task.date.startsWith(monthKey),
+              task.date.startsWith(monthKey) && Boolean(task.start),
             ).length;
             return (
               <article className="year-month" key={monthIndex}>
@@ -1157,7 +1160,7 @@ export default function Home() {
                     const dateKey = toDateKey(date);
                     const inMonth = date.getMonth() === monthIndex;
                     const dayTaskCount = data.tasks.filter(
-                      (task) => task.date === dateKey,
+                      (task) => task.date === dateKey && Boolean(task.start),
                     ).length;
                     return (
                       <button
@@ -1244,7 +1247,9 @@ export default function Home() {
           <div className="month-grid">
             {days.map((date) => {
               const dateKey = toDateKey(date);
-              const dayTasks = data.tasks.filter((task) => task.date === dateKey);
+              const dayTasks = data.tasks.filter(
+                (task) => task.date === dateKey && Boolean(task.start),
+              );
               const inMonth = date.getMonth() === monthCursor.getMonth();
               const selected = dateKey === selectedDate;
               return (

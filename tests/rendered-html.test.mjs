@@ -85,6 +85,9 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /DAY_END_MINUTES = 22 \* 60/);
   assert.match(page, /HOUR_HEIGHT = 36/);
   assert.match(page, /extractTodayTasks/);
+  assert.match(page, /2026年8月6日17点汇报工作/);
+  assert.match(page, /任务将进入跨日期收件箱/);
+  assert.match(page, /\(task\) => task\.date === dateKey && Boolean\(task\.start\)/);
   assert.match(page, /generateBrief/);
   assert.match(page, /briefStartDate/);
   assert.match(page, /【本周周报】/);
