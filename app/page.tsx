@@ -69,6 +69,9 @@ type AppData = {
   apiKey: string;
 };
 
+type CloudState = Omit<AppData, "apiKey">;
+type SyncStatus = "local" | "syncing" | "synced" | "needs-login" | "error";
+
 const STORAGE_KEY = "xigua-personal-desk-v1";
 const LEGACY_SEED_TASK_IDS = new Set(["seed-1", "seed-2", "seed-3"]);
 const DAY_START_MINUTES = 8 * 60;
@@ -105,6 +108,38 @@ function briefTaskLine(task: Task) {
 
 function withoutLegacySeedTasks(tasks: Task[]) {
   return tasks.filter((task) => !LEGACY_SEED_TASK_IDS.has(task.id));
+}
+
+function cloudStateFrom(data: AppData): CloudState {
+  return {
+    tasks: data.tasks,
+    monthlyNotes: data.monthlyNotes,
+    diaries: data.diaries,
+    messages: data.messages,
+    diaryMessages: data.diaryMessages,
+  };
+}
+
+function mergeById<T extends { id: string }>(local: T[], remote: T[]) {
+  const merged = new Map<string, T>();
+  remote.forEach((item) => merged.set(item.id, item));
+  local.forEach((item) => merged.set(item.id, item));
+  return Array.from(merged.values());
+}
+
+function mergeCloudState(local: CloudState, remote: CloudState): CloudState {
+  const notes = new Map(remote.monthlyNotes.map((note) => [note.month, note]));
+  local.monthlyNotes.forEach((note) => {
+    const current = notes.get(note.month);
+    if (!current || note.updatedAt >= current.updatedAt) notes.set(note.month, note);
+  });
+  return {
+    tasks: mergeById(local.tasks, remote.tasks),
+    monthlyNotes: Array.from(notes.values()),
+    diaries: mergeById(local.diaries, remote.diaries),
+    messages: mergeById(local.messages, remote.messages),
+    diaryMessages: mergeById(local.diaryMessages, remote.diaryMessages),
+  };
 }
 
 const seedData: AppData = {
@@ -308,6 +343,9 @@ export default function Home() {
   const [briefDraft, setBriefDraft] = useState("");
   const [isBriefGenerating, setIsBriefGenerating] = useState(false);
   const [notice, setNotice] = useState("");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
+  const [syncUpdatedAt, setSyncUpdatedAt] = useState(0);
+  const [syncReady, setSyncReady] = useState(false);
 
   useEffect(() => {
     // localStorage 仅在浏览器端可用，因此在首屏挂载后恢复个人数据。
@@ -320,6 +358,86 @@ export default function Home() {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data, hydrated]);
+
+  async function pushCloudState(nextData: AppData, knownUpdatedAt = syncUpdatedAt) {
+    const response = await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        state: cloudStateFrom(nextData),
+        clientUpdatedAt: knownUpdatedAt,
+      }),
+    });
+    const payload = (await response.json()) as {
+      state?: CloudState | null;
+      updatedAt?: number;
+      conflict?: boolean;
+      error?: string;
+    };
+    if (response.status === 401) {
+      setSyncStatus("needs-login");
+      return false;
+    }
+    if (response.status === 409 && payload.state) {
+      const merged = mergeCloudState(cloudStateFrom(nextData), payload.state);
+      setData((current) => ({ ...current, ...merged }));
+      setSyncUpdatedAt(payload.updatedAt || 0);
+      setSyncStatus("synced");
+      return false;
+    }
+    if (!response.ok) throw new Error(payload.error || "同步失败");
+    setSyncUpdatedAt(payload.updatedAt || 0);
+    setSyncStatus("synced");
+    return true;
+  }
+
+  async function syncNow() {
+    if (!hydrated) return;
+    setSyncStatus("syncing");
+    try {
+      const response = await fetch("/api/sync", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        state?: CloudState | null;
+        updatedAt?: number;
+        error?: string;
+      };
+      if (response.status === 401) {
+        setSyncStatus("needs-login");
+        setNotice("请先登录 ChatGPT，再回来点击同步。当前设备数据不会丢失。");
+        return;
+      }
+      if (!response.ok) throw new Error(payload.error || "同步失败");
+      const local = cloudStateFrom(data);
+      const merged = payload.state ? mergeCloudState(local, payload.state) : local;
+      const nextData = { ...data, ...merged };
+      setData(nextData);
+      setSyncUpdatedAt(payload.updatedAt || 0);
+      setSyncReady(true);
+      await pushCloudState(nextData, payload.updatedAt || 0);
+      setNotice(payload.state ? "电脑和手机的数据已合并并同步。" : "已开启云端同步。今后电脑和手机会自动保持一致。");
+    } catch {
+      setSyncStatus("error");
+      setNotice("云端同步暂时不可用，当前仍可继续使用本机数据。");
+    }
+  }
+
+  useEffect(() => {
+    if (!hydrated || !syncReady) return;
+    const timer = window.setTimeout(() => {
+      void pushCloudState(data).catch(() => setSyncStatus("error"));
+    }, 800);
+    return () => window.clearTimeout(timer);
+    // pushCloudState is defined in the component and intentionally tracks the latest data here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, hydrated, syncReady]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void syncNow();
+    // 只在首次恢复本地数据后尝试一次；匿名访客会自然回到本机模式。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
 
   const selectedTasks = useMemo(
     () =>
@@ -1801,6 +1919,29 @@ export default function Home() {
     <main className="content content--narrow" id="main-content">
       <PageHeader eyebrow="安静地配置一次" title="设置" />
       <section className="settings-stack">
+        <article className="setting-card setting-card--sync">
+          <p className="eyebrow">跨设备同步</p>
+          <h2>电脑和手机保持一致</h2>
+          <p>
+            登录 ChatGPT 后，任务、收件箱、月历备注、日记和简报会自动保存到云端。首次连接会合并当前设备与云端内容，DeepSeek API Key 仍只保存在本机。
+          </p>
+          <p className="sync-status" aria-live="polite">
+            {syncStatus === "synced" && "已同步"}
+            {syncStatus === "syncing" && "正在同步…"}
+            {syncStatus === "needs-login" && "请先登录 ChatGPT"}
+            {syncStatus === "error" && "同步暂时不可用，当前使用本机数据"}
+            {syncStatus === "local" && "当前为本机模式"}
+            {syncUpdatedAt > 0 && syncStatus === "synced" && ` · ${new Date(syncUpdatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`}
+          </p>
+          <div className="row-actions">
+            <button className="button button--dark" onClick={() => void syncNow()} disabled={syncStatus === "syncing"}>
+              {syncStatus === "syncing" ? "同步中…" : "立即同步"}
+            </button>
+            <a className="button button--plain" href="/signin-with-chatgpt?return_to=/">
+              登录 ChatGPT
+            </a>
+          </div>
+        </article>
         <article className="setting-card">
           <p className="eyebrow">AI 连接</p>
           <h2>DeepSeek API Key</h2>
@@ -1855,7 +1996,7 @@ export default function Home() {
         </article>
         <article className="privacy-note">
           <strong>你的数据，归你。</strong>
-          <p>任务和日记默认只在这台设备的这个浏览器里。清除浏览器数据前，记得先导出备份。</p>
+          <p>开启云端同步后，电脑和手机使用同一份数据；清除浏览器数据前仍建议保留 JSON 备份。</p>
         </article>
       </section>
     </main>

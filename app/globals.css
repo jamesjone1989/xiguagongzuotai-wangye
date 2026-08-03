@@ -2464,6 +2464,13 @@ h2 {
   line-height: 1.7;
 }
 
+.sync-status {
+  margin: 14px 0 0;
+  color: var(--green) !important;
+  font-size: 12px !important;
+  font-weight: 800;
+}
+
 .field {
   display: grid;
   gap: 8px;

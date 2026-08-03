@@ -52,11 +52,12 @@ test("server-renders the personal workbench", async () => {
 });
 
 test("keeps local data and AI privacy guardrails in source", async () => {
-  const [page, layout, styles, packageJson] = await Promise.all([
+  const [page, layout, styles, packageJson, syncRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/sync/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /xigua-personal-desk-v1/);
@@ -98,6 +99,13 @@ test("keeps local data and AI privacy guardrails in source", async () => {
   assert.match(page, /data\.tasks\.filter\(\(task\) => !task\.start\)/);
   assert.doesNotMatch(page, /selectedTasks\.filter\(\(task\) => !task\.start\)/);
   assert.match(page, /scheduledSelectedTasks/);
+  assert.match(page, /function cloudStateFrom/);
+  assert.match(page, /mergeCloudState/);
+  assert.match(page, /首次连接会合并当前设备与云端内容/);
+  assert.match(page, /\/api\/sync/);
+  assert.match(styles, /\.sync-status/);
+  assert.match(syncRoute, /oai-authenticated-user-id/);
+  assert.match(syncRoute, /workbench_sync/);
   assert.match(page, /没有具体时间时 start 和 end 都为空字符串/);
   assert.match(page, /AI 帮我填写/);
   assert.match(page, /已完成/);
