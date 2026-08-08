@@ -23,9 +23,16 @@ async function database() {
   return binding;
 }
 
-async function userId() {
+async function syncIdentity() {
   const requestHeaders = await headers();
-  return requestHeaders.get("oai-authenticated-user-id");
+  const syncKey = requestHeaders.get("x-workbench-sync-key")?.trim() || "";
+  if (syncKey.length >= 32) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(syncKey));
+    const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `sync:${hash}`;
+  }
+  const authenticated = requestHeaders.get("oai-authenticated-user-id");
+  return authenticated || null;
 }
 
 function response(body: unknown, status = 200) {
@@ -61,8 +68,8 @@ async function ensureTable(db: D1Database) {
 }
 
 export async function GET() {
-  const currentUserId = await userId();
-  if (!currentUserId) return response({ error: "需要先登录 ChatGPT 才能同步" }, 401);
+  const currentUserId = await syncIdentity();
+  if (!currentUserId) return response({ error: "请先登录 ChatGPT 或填写跨平台同步码" }, 401);
 
   try {
     const db = await database();
@@ -82,8 +89,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const currentUserId = await userId();
-  if (!currentUserId) return response({ error: "需要先登录 ChatGPT 才能同步" }, 401);
+  const currentUserId = await syncIdentity();
+  if (!currentUserId) return response({ error: "请先登录 ChatGPT 或填写跨平台同步码" }, 401);
 
   try {
     const body = (await request.json()) as {

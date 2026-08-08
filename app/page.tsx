@@ -73,6 +73,7 @@ type CloudState = Omit<AppData, "apiKey">;
 type SyncStatus = "local" | "syncing" | "synced" | "needs-login" | "error";
 
 const STORAGE_KEY = "xigua-personal-desk-v1";
+const SYNC_KEY_STORAGE = "xigua-workbench-sync-key-v1";
 const LEGACY_SEED_TASK_IDS = new Set(["seed-1", "seed-2", "seed-3"]);
 const DAY_START_MINUTES = 8 * 60;
 const DAY_END_MINUTES = 22 * 60;
@@ -346,11 +347,13 @@ export default function Home() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
   const [syncUpdatedAt, setSyncUpdatedAt] = useState(0);
   const [syncReady, setSyncReady] = useState(false);
+  const [syncKey, setSyncKey] = useState("");
 
   useEffect(() => {
     // localStorage 仅在浏览器端可用，因此在首屏挂载后恢复个人数据。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setData(safeLoad());
+    setSyncKey(localStorage.getItem(SYNC_KEY_STORAGE) || "");
     setHydrated(true);
   }, []);
 
@@ -362,7 +365,10 @@ export default function Home() {
   async function pushCloudState(nextData: AppData, knownUpdatedAt = syncUpdatedAt) {
     const response = await fetch("/api/sync", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(syncKey ? { "x-workbench-sync-key": syncKey } : {}),
+      },
       body: JSON.stringify({
         state: cloudStateFrom(nextData),
         clientUpdatedAt: knownUpdatedAt,
@@ -395,7 +401,10 @@ export default function Home() {
     if (!hydrated) return;
     setSyncStatus("syncing");
     try {
-      const response = await fetch("/api/sync", { cache: "no-store" });
+      const response = await fetch("/api/sync", {
+        cache: "no-store",
+        headers: syncKey ? { "x-workbench-sync-key": syncKey } : {},
+      });
       const payload = (await response.json()) as {
         state?: CloudState | null;
         updatedAt?: number;
@@ -404,7 +413,7 @@ export default function Home() {
       if (response.status === 401) {
         setSyncStatus("needs-login");
         if (!options.silent) {
-          setNotice("请先登录 ChatGPT，再回来点击同步。当前设备数据不会丢失。");
+          setNotice("请先登录 ChatGPT，或在设置里填写跨平台同步码。当前数据不会丢失。");
         }
         return;
       }
@@ -708,7 +717,7 @@ export default function Home() {
           Authorization: `Bearer ${data.apiKey}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           temperature: 0.1,
           response_format: { type: "json_object" },
           messages: [
@@ -789,7 +798,7 @@ export default function Home() {
           Authorization: `Bearer ${data.apiKey}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           temperature: 0.45,
           messages: [
             {
@@ -848,7 +857,7 @@ export default function Home() {
           Authorization: `Bearer ${data.apiKey}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           temperature: 0.35,
           response_format: { type: "json_object" },
           messages: [
@@ -1530,7 +1539,7 @@ export default function Home() {
           Authorization: `Bearer ${data.apiKey}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           temperature: 0.2,
           messages: [
             {
@@ -1930,14 +1939,44 @@ export default function Home() {
           <p className="sync-status" aria-live="polite">
             {syncStatus === "synced" && "已同步"}
             {syncStatus === "syncing" && "正在同步…"}
-            {syncStatus === "needs-login" && "请先登录 ChatGPT"}
+            {syncStatus === "needs-login" && "请登录 ChatGPT 或填写同步码"}
             {syncStatus === "error" && "同步暂时不可用，当前使用本机数据"}
             {syncStatus === "local" && "当前为本机模式"}
             {syncUpdatedAt > 0 && syncStatus === "synced" && ` · ${new Date(syncUpdatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`}
           </p>
+          <label className="field">
+            <span>跨平台同步码</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={syncKey}
+              onChange={(event) => {
+                const value = event.target.value.trim();
+                setSyncKey(value);
+                localStorage.setItem(SYNC_KEY_STORAGE, value);
+                setSyncReady(false);
+                setSyncStatus("local");
+              }}
+              placeholder="与 Mac 设置页填写同一个同步码"
+            />
+          </label>
           <div className="row-actions">
             <button className="button button--dark" onClick={() => void syncNow()} disabled={syncStatus === "syncing"}>
               {syncStatus === "syncing" ? "同步中…" : "立即同步"}
+            </button>
+            <button
+              type="button"
+              className="button button--plain"
+              onClick={() => {
+                const value = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll("-", "");
+                setSyncKey(value);
+                localStorage.setItem(SYNC_KEY_STORAGE, value);
+                setSyncReady(false);
+                setSyncStatus("local");
+                setNotice("同步码已生成，请把同一个码填入 Mac 工作台设置页。");
+              }}
+            >
+              生成同步码
             </button>
             <a className="button button--plain" href="/signin-with-chatgpt?return_to=/">
               登录 ChatGPT
@@ -2193,7 +2232,7 @@ function TaskModal({
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
           temperature: 0.1,
           response_format: { type: "json_object" },
           messages: [
