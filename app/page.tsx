@@ -348,6 +348,7 @@ export default function Home() {
   const [syncUpdatedAt, setSyncUpdatedAt] = useState(0);
   const [syncReady, setSyncReady] = useState(false);
   const [syncKey, setSyncKey] = useState("");
+  const [syncKeyVisible, setSyncKeyVisible] = useState(false);
 
   useEffect(() => {
     // localStorage 仅在浏览器端可用，因此在首屏挂载后恢复个人数据。
@@ -1947,7 +1948,7 @@ export default function Home() {
           <label className="field">
             <span>跨平台同步码</span>
             <input
-              type="password"
+              type={syncKeyVisible ? "text" : "password"}
               autoComplete="off"
               value={syncKey}
               onChange={(event) => {
@@ -1977,6 +1978,25 @@ export default function Home() {
               }}
             >
               生成同步码
+            </button>
+            <button
+              type="button"
+              className="button button--plain"
+              disabled={!syncKey}
+              onClick={() => setSyncKeyVisible((visible) => !visible)}
+            >
+              {syncKeyVisible ? "隐藏同步码" : "显示同步码"}
+            </button>
+            <button
+              type="button"
+              className="button button--plain"
+              disabled={!syncKey}
+              onClick={async () => {
+                await navigator.clipboard.writeText(syncKey);
+                setNotice("同步码已复制，请粘贴到 Mac 工作台设置页。");
+              }}
+            >
+              复制同步码
             </button>
             <a className="button button--plain" href="/signin-with-chatgpt?return_to=/">
               登录 ChatGPT
