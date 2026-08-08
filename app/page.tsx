@@ -29,6 +29,7 @@ type Task = {
   tag: TaskTag;
   notes: string;
   done: boolean;
+  updatedAt?: number;
 };
 
 type Diary = {
@@ -128,6 +129,18 @@ function mergeById<T extends { id: string }>(local: T[], remote: T[]) {
   return Array.from(merged.values());
 }
 
+function mergeLatestById<T extends { id: string; updatedAt?: number }>(local: T[], remote: T[]) {
+  const merged = new Map<string, T>();
+  remote.forEach((item) => merged.set(item.id, item));
+  local.forEach((item) => {
+    const current = merged.get(item.id);
+    if (!current || (item.updatedAt || 0) >= (current.updatedAt || 0)) {
+      merged.set(item.id, item);
+    }
+  });
+  return Array.from(merged.values());
+}
+
 function mergeCloudState(local: CloudState, remote: CloudState): CloudState {
   const notes = new Map(remote.monthlyNotes.map((note) => [note.month, note]));
   local.monthlyNotes.forEach((note) => {
@@ -135,9 +148,9 @@ function mergeCloudState(local: CloudState, remote: CloudState): CloudState {
     if (!current || note.updatedAt >= current.updatedAt) notes.set(note.month, note);
   });
   return {
-    tasks: mergeById(local.tasks, remote.tasks),
+    tasks: mergeLatestById(local.tasks, remote.tasks),
     monthlyNotes: Array.from(notes.values()),
-    diaries: mergeById(local.diaries, remote.diaries),
+    diaries: mergeLatestById(local.diaries, remote.diaries),
     messages: mergeById(local.messages, remote.messages),
     diaryMessages: mergeById(local.diaryMessages, remote.diaryMessages),
   };
@@ -498,11 +511,12 @@ export default function Home() {
   );
 
   function updateTask(task: Task) {
+    const nextTask = { ...task, updatedAt: Date.now() };
     setData((current) => ({
       ...current,
-      tasks: current.tasks.some((item) => item.id === task.id)
-        ? current.tasks.map((item) => (item.id === task.id ? task : item))
-        : [...current.tasks, task],
+      tasks: current.tasks.some((item) => item.id === nextTask.id)
+        ? current.tasks.map((item) => (item.id === nextTask.id ? nextTask : item))
+        : [...current.tasks, nextTask],
     }));
   }
 
@@ -601,6 +615,7 @@ export default function Home() {
                 ...item,
                 start: minutesToTime(nextStart),
                 end: minutesToTime(nextEnd),
+                updatedAt: Date.now(),
               }
             : item,
         ),
@@ -620,7 +635,7 @@ export default function Home() {
     setData((current) => ({
       ...current,
       tasks: current.tasks.map((task) =>
-        task.id === id ? { ...task, done: !task.done } : task,
+        task.id === id ? { ...task, done: !task.done, updatedAt: Date.now() } : task,
       ),
     }));
   }
@@ -760,6 +775,7 @@ export default function Home() {
             tag,
             notes: task.notes?.trim() || "",
             done: false,
+            updatedAt: Date.now(),
           };
         });
       if (!tasks.length) throw new Error("没有可用任务");
