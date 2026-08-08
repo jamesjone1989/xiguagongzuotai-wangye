@@ -40,3 +40,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/ios/DerivedData/
+/release/
+/macos-app/build/
+/macos-app/XiguaWorkbench/Assets.xcassets/AppIcon.appiconset/*.png
