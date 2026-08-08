@@ -41,5 +41,7 @@ next-env.d.ts
 /outputs/
 /work/
 /ios/
-/macos-app/
+/macos-app/build/
+/macos-app/**/*.xcuserstate
+/macos-app/**/*.xcuserdata/
 /release/
