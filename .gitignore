@@ -40,6 +40,12 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
-/ios/
+/ios/DerivedData/
+*.xcarchive
+*.ipa
+*.dSYM
+*.xcresult
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
 /macos-app/
 /release/
